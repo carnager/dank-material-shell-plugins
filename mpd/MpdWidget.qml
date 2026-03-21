@@ -923,8 +923,10 @@ PluginComponent {
         Item {
             id: pillRoot
 
-            readonly property int browserButtonWidth: 20
-            readonly property int controlsWidth: browserButtonWidth + Theme.spacingXS + 20 + 2 + 24 + 2 + 20
+            readonly property bool separateBrowserPluginLoaded: !!(root.pluginService && root.pluginService.loadedPlugins && root.pluginService.loadedPlugins["mpdBrowser"])
+            readonly property int browserButtonWidth: separateBrowserPluginLoaded ? 0 : 20
+            readonly property int browserButtonSpacing: separateBrowserPluginLoaded ? 0 : Theme.spacingXS
+            readonly property int controlsWidth: browserButtonWidth + browserButtonSpacing + 20 + 2 + 24 + 2 + 20
             readonly property int coverWidth: root.showBarCover && root.artSource.length > 0 ? root.coverSize + Theme.spacingXS : 0
             readonly property int fixedWidth: coverWidth + controlsWidth + Theme.spacingXS
             readonly property int measuredTextWidth: Math.ceil(textMeasure.implicitWidth) + 2
@@ -966,6 +968,7 @@ PluginComponent {
                 }
 
                 Rectangle {
+                    visible: !pillRoot.separateBrowserPluginLoaded
                     width: pillRoot.browserButtonWidth
                     height: 20
                     radius: 10

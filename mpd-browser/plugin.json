@@ -1,0 +1,12 @@
+{
+  "id": "mpdBrowser",
+  "name": "MPD Browser",
+  "description": "Browse and queue MPD albums in a dedicated widget",
+  "version": "1.0.0",
+  "author": "carnager",
+  "icon": "library_music",
+  "type": "widget",
+  "component": "./MpdBrowserWidget.qml",
+  "settings": "./MpdBrowserSettings.qml",
+  "permissions": ["settings_read", "settings_write"]
+}
