@@ -55,11 +55,27 @@ PluginSettings {
     }
 
     StringSetting {
+        settingKey: "clerkApiBaseUrl"
+        label: "Clerk API"
+        description: "Base URL for clerk-service, used for album ratings and random playback. Leave empty to read ~/.config/clerk/clerk-api-rofi.conf"
+        placeholder: "http://localhost:5000/api/v1"
+        defaultValue: ""
+    }
+
+    StringSetting {
         settingKey: "format"
         label: "Format"
         description: "Supported placeholders: {tracknumber}, {artist}, {title}, {album}, {albumartist}, {date}, {year}, {filename}"
         placeholder: "{artist} - {title} ({album})"
         defaultValue: "{artist} - {title} ({album})"
+    }
+
+    StringSetting {
+        settingKey: "cover"
+        label: "Bar Cover"
+        description: "Show cover art in the horizontal bar: true or false"
+        placeholder: "false"
+        defaultValue: "false"
     }
 
     StringSetting {
