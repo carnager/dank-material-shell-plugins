@@ -6,7 +6,7 @@ It shows the currently playing track in the bar and opens a track popup with pla
 
 ## Features
 
-- Event-driven MPD watcher backed by the `mpdwatch` Go binary
+- Event-driven MPD watcher backed by the external `mpdwatch` Go binary
 - Configurable bar text format
 - Optional cover art in the bar
 - Track popup with transport controls
@@ -22,6 +22,7 @@ The plugin id is `mpd`.
 - `port`: MPD TCP port
 - `password`: optional MPD password
 - `clerkApiBaseUrl`: optional clerk API base URL
+- `watcherBinary`: path or command name for the `mpdwatch` binary
 - `format`: bar text template
 - `cover`: `true` or `false` for bar cover art
 - `maxWidth`: maximum bar width in pixels, `0` disables the limit
@@ -49,16 +50,19 @@ Clerk is used for:
 
 ## Build
 
-The widget now calls the compiled `mpdwatch` binary directly. Build it in the plugin directory before using the widget:
+The widget now calls an external `mpdwatch` binary directly. Build it from the top-level `mpdwatch/` project:
 
 ```sh
-cd /home/carnager/Code/dank-material-shell-plugins/mpd
-go build -o mpdwatch ./mpd_watch.go
+cd /home/carnager/Code/dank-material-shell-plugins/mpdwatch
+go build -o mpdwatch .
 ```
 
-If you update `mpd_watch.go`, rebuild `mpdwatch`.
+Then either:
+
+- place `mpdwatch` somewhere in your `PATH`, or
+- set `Watcher Binary` in the plugin settings to the absolute binary path
 
 ## Notes
 
 - This widget is track-focused again. The dedicated album browser now lives in [`../mpd-browser`](../mpd-browser).
-- The runtime dependency is now the compiled `mpdwatch` binary from `mpd_watch.go`.
+- The runtime dependency is now the external `mpdwatch` binary from [`../mpdwatch`](../mpdwatch).

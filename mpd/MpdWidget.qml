@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import "." as MpdShared
 import qs.Common
 import qs.Modules.Plugins
 import qs.Widgets
@@ -8,10 +9,12 @@ import qs.Widgets
 PluginComponent {
     id: root
 
-    property string host: String(pluginData.host || "localhost").trim()
-    property string port: String(pluginData.port || "6600").trim()
-    property string password: String(pluginData.password || "")
-    property string clerkApiBaseUrl: String(pluginData.clerkApiBaseUrl || "").trim()
+    property bool watcherInitialized: false
+    readonly property string host: runtimeConfig.host
+    readonly property string port: runtimeConfig.port
+    readonly property string password: runtimeConfig.password
+    readonly property string clerkApiBaseUrl: runtimeConfig.clerkApiBaseUrl
+    readonly property string watcherBinaryPath: runtimeConfig.watcherBinaryPath
     property string formatTemplate: String(pluginData.format || "{artist} - {title} ({album})")
     property bool showBarCover: {
         const value = String(pluginData.cover || "false").trim().toLowerCase();
@@ -70,10 +73,6 @@ PluginComponent {
         })
     readonly property int coverSize: Math.max(20, root.barThickness - 12)
 
-    readonly property string watcherScriptPath: {
-        const url = Qt.resolvedUrl("mpdwatch").toString();
-        return url.startsWith("file://") ? url.substring(7) : url;
-    }
     readonly property string currentAlbumKey: {
         const album = String(trackData.album || "");
         const albumartist = String(trackData.albumartist || trackData.artist || "");
@@ -259,7 +258,7 @@ PluginComponent {
     }
 
     function buildCommand() {
-        const args = [watcherScriptPath, "--host", host.length > 0 ? host : "localhost", "--port", port.length > 0 ? port : "6600"];
+        const args = [watcherBinaryPath, "--host", host.length > 0 ? host : "localhost", "--port", port.length > 0 ? port : "6600"];
         if (password.length > 0)
             args.push("--password", password);
         if (clerkApiBaseUrl.length > 0)
@@ -268,7 +267,7 @@ PluginComponent {
     }
 
     function runControl(action, arg) {
-        const args = [watcherScriptPath, "--host", host.length > 0 ? host : "localhost", "--port", port.length > 0 ? port : "6600", "--action", action];
+        const args = [watcherBinaryPath, "--host", host.length > 0 ? host : "localhost", "--port", port.length > 0 ? port : "6600", "--action", action];
         if (arg !== undefined && arg !== null && String(arg).length > 0)
             args.push("--arg", String(arg));
         if (password.length > 0)
@@ -347,20 +346,35 @@ PluginComponent {
 
     pluginId: "mpd"
 
+    MpdShared.MpdRuntimeConfig {
+        id: runtimeConfig
+        pluginService: root.pluginService
+        pluginData: root.pluginData
+        pluginId: root.pluginId
+    }
+
+    Connections {
+        target: runtimeConfig
+        function onConfigChanged() {
+            root.updateFormattedText();
+            if (!root.watcherInitialized) {
+                root.watcherInitialized = true;
+                Qt.callLater(root.startWatcher);
+                return;
+            }
+            if (watcher.running || root.connected || root.errorText.length > 0)
+                root.restartWatcher();
+        }
+    }
+
     ccWidgetIcon: connected ? (playbackState === "play" ? "music_note" : playbackState === "pause" ? "pause_circle" : "stop_circle") : "music_off"
     ccWidgetPrimaryText: "MPD"
     ccWidgetSecondaryText: connected ? displayText : (errorText.length > 0 ? errorText : displayText)
     ccWidgetIsActive: connected && playbackState === "play"
     Component.onCompleted: {
         updateFormattedText();
-        startWatcher();
     }
 
-    onPluginDataChanged: {
-        updateFormattedText();
-        if (watcher.running || connected || errorText.length > 0)
-            root.restartWatcher();
-    }
     Timer {
         id: restartTimer
 

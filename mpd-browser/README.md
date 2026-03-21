@@ -32,9 +32,11 @@ Add the widget to a bar section in DMS first. A loaded plugin is not enough for 
 Build the shared watcher binary first:
 
 ```sh
-cd /home/carnager/Code/dank-material-shell-plugins/mpd
-go build -o mpdwatch ./mpd_watch.go
+cd /home/carnager/Code/dank-material-shell-plugins/mpdwatch
+go build -o mpdwatch .
 ```
+
+Then either put `mpdwatch` in your `PATH` or set `Watcher Binary` in the main `mpd` plugin settings to the absolute binary path.
 
 Useful commands:
 
@@ -55,4 +57,4 @@ dms ipc call widget hide mpdBrowser
 
 - [`../mpd`](../mpd) remains the main track widget.
 - `mpdBrowser` reuses the same MPD / clerk settings by default through `sharedPluginId: "mpd"`.
-- Both plugins rely on the same watcher backend in `../mpd/mpdwatch`, built from `../mpd/mpd_watch.go`.
+- Both plugins rely on the same watcher backend from [`../mpdwatch`](../mpdwatch).

@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import "../mpd" as MpdShared
 import qs.Common
 import qs.Modules.Plugins
 import qs.Widgets
@@ -10,10 +11,12 @@ PluginComponent {
 
     property string sharedPluginId: String(pluginData.sharedPluginId || "mpd").trim()
     property string defaultMode: String(pluginData.defaultMode || "album").trim().toLowerCase() === "latest" ? "latest" : "album"
-    property string host: "localhost"
-    property string port: "6600"
-    property string password: ""
-    property string clerkApiBaseUrl: ""
+    property bool browserInitialized: false
+    readonly property string host: runtimeConfig.host
+    readonly property string port: runtimeConfig.port
+    readonly property string password: runtimeConfig.password
+    readonly property string clerkApiBaseUrl: runtimeConfig.clerkApiBaseUrl
+    readonly property string watcherBinaryPath: runtimeConfig.watcherBinaryPath
     property bool albumBrowserLoading: false
     property string albumBrowserMode: defaultMode
     property string albumBrowserPendingMode: ""
@@ -29,10 +32,12 @@ PluginComponent {
     property var albumBrowserFocusScope: null
     property var albumBrowserListViewRef: null
 
-    readonly property string watcherScriptPath: {
-        const url = Qt.resolvedUrl("../mpd/mpdwatch").toString();
-        return url.startsWith("file://") ? url.substring(7) : url;
+    MpdShared.MpdRuntimeConfig {
+        id: runtimeConfig
+        pluginService: root.pluginService
+        pluginId: root.sharedSettingsSourceId()
     }
+
     readonly property var filteredAlbumBrowserAlbums: {
         const query = String(albumBrowserSearch || "").trim().toLowerCase();
         const albums = albumBrowserAlbums || [];
@@ -80,21 +85,13 @@ PluginComponent {
         return sharedPluginId.length > 0 ? sharedPluginId : "mpd";
     }
 
-    function loadSharedConfig() {
-        const sourceId = sharedSettingsSourceId();
-        host = String(pluginService ? pluginService.loadPluginData(sourceId, "host", "localhost") : "localhost").trim();
-        port = String(pluginService ? pluginService.loadPluginData(sourceId, "port", "6600") : "6600").trim();
-        password = String(pluginService ? pluginService.loadPluginData(sourceId, "password", "") : "");
-        clerkApiBaseUrl = String(pluginService ? pluginService.loadPluginData(sourceId, "clerkApiBaseUrl", "") : "").trim();
-    }
-
     function extractYear(value) {
         const match = String(value || "").match(/(\d{4})/);
         return match ? match[1] : "";
     }
 
     function buildAlbumBrowserCommand(mode) {
-        const args = [watcherScriptPath, "--host", host.length > 0 ? host : "localhost", "--port", port.length > 0 ? port : "6600", "--action", "dump_albums", "--arg", mode === "latest" ? "latest" : "album"];
+        const args = [watcherBinaryPath, "--host", host.length > 0 ? host : "localhost", "--port", port.length > 0 ? port : "6600", "--action", "dump_albums", "--arg", mode === "latest" ? "latest" : "album"];
         if (password.length > 0)
             args.push("--password", password);
         if (clerkApiBaseUrl.length > 0)
@@ -103,7 +100,7 @@ PluginComponent {
     }
 
     function runControl(action, arg) {
-        const args = [watcherScriptPath, "--host", host.length > 0 ? host : "localhost", "--port", port.length > 0 ? port : "6600", "--action", action];
+        const args = [watcherBinaryPath, "--host", host.length > 0 ? host : "localhost", "--port", port.length > 0 ? port : "6600", "--action", action];
         if (arg !== undefined && arg !== null && String(arg).length > 0)
             args.push("--arg", String(arg));
         if (password.length > 0)
@@ -479,21 +476,27 @@ PluginComponent {
     }
 
     Component.onCompleted: {
-        loadSharedConfig();
         albumBrowserMode = defaultMode;
-        loadAlbumBrowser(albumBrowserMode, false);
     }
 
-    onPluginServiceChanged: loadSharedConfig()
-    onSharedPluginIdChanged: loadSharedConfig()
+    onSharedPluginIdChanged: runtimeConfig.reload()
     onAlbumBrowserSearchChanged: syncAlbumBrowserSelection()
     onAlbumBrowserAlbumsChanged: syncAlbumBrowserSelection()
 
     Connections {
-        target: pluginService
-        function onPluginDataChanged(changedPluginId) {
-            if (changedPluginId === root.sharedSettingsSourceId())
-                root.loadSharedConfig();
+        target: runtimeConfig
+        function onConfigChanged() {
+            if (!root.browserInitialized) {
+                root.browserInitialized = true;
+                Qt.callLater(() => root.loadAlbumBrowser(root.albumBrowserMode, false));
+                return;
+            }
+            root.albumBrowserCache = ({});
+            root.albumBrowserAlbums = [];
+            root.albumBrowserSelectedId = "";
+            root.albumBrowserActionPromptId = "";
+            if (root.pluginPopoutVisible)
+                Qt.callLater(() => root.loadAlbumBrowser(root.albumBrowserMode, true));
         }
     }
 

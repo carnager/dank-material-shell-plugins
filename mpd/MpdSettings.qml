@@ -63,6 +63,14 @@ PluginSettings {
     }
 
     StringSetting {
+        settingKey: "watcherBinary"
+        label: "Watcher Binary"
+        description: "Path or command name for the mpdwatch binary."
+        placeholder: "mpdwatch"
+        defaultValue: "mpdwatch"
+    }
+
+    StringSetting {
         settingKey: "format"
         label: "Format"
         description: "Supported placeholders: {tracknumber}, {artist}, {title}, {album}, {albumartist}, {date}, {year}, {filename}"
