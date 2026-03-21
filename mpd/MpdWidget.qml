@@ -71,7 +71,7 @@ PluginComponent {
     readonly property int coverSize: Math.max(20, root.barThickness - 12)
 
     readonly property string watcherScriptPath: {
-        const url = Qt.resolvedUrl("mpd_watch.py").toString();
+        const url = Qt.resolvedUrl("mpdwatch").toString();
         return url.startsWith("file://") ? url.substring(7) : url;
     }
     readonly property string currentAlbumKey: {
@@ -259,7 +259,7 @@ PluginComponent {
     }
 
     function buildCommand() {
-        const args = ["python3", watcherScriptPath, "--host", host.length > 0 ? host : "localhost", "--port", port.length > 0 ? port : "6600"];
+        const args = [watcherScriptPath, "--host", host.length > 0 ? host : "localhost", "--port", port.length > 0 ? port : "6600"];
         if (password.length > 0)
             args.push("--password", password);
         if (clerkApiBaseUrl.length > 0)
@@ -268,7 +268,7 @@ PluginComponent {
     }
 
     function runControl(action, arg) {
-        const args = ["python3", watcherScriptPath, "--host", host.length > 0 ? host : "localhost", "--port", port.length > 0 ? port : "6600", "--action", action];
+        const args = [watcherScriptPath, "--host", host.length > 0 ? host : "localhost", "--port", port.length > 0 ? port : "6600", "--action", action];
         if (arg !== undefined && arg !== null && String(arg).length > 0)
             args.push("--arg", String(arg));
         if (password.length > 0)

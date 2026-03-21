@@ -6,7 +6,7 @@ It shows the currently playing track in the bar and opens a track popup with pla
 
 ## Features
 
-- Event-driven MPD watcher backed by `mpd_watch.py`
+- Event-driven MPD watcher backed by the `mpdwatch` Go binary
 - Configurable bar text format
 - Optional cover art in the bar
 - Track popup with transport controls
@@ -47,7 +47,18 @@ Clerk is used for:
 - album ratings
 - random album / tracks actions
 
+## Build
+
+The widget now calls the compiled `mpdwatch` binary directly. Build it in the plugin directory before using the widget:
+
+```sh
+cd /home/carnager/Code/dank-material-shell-plugins/mpd
+go build -o mpdwatch ./mpd_watch.go
+```
+
+If you update `mpd_watch.go`, rebuild `mpdwatch`.
+
 ## Notes
 
 - This widget is track-focused again. The dedicated album browser now lives in [`../mpd-browser`](../mpd-browser).
-- The Python watcher imports `python-mpd2` (`from mpd import MPDClient`), so that library must be available in the runtime environment.
+- The runtime dependency is now the compiled `mpdwatch` binary from `mpd_watch.go`.

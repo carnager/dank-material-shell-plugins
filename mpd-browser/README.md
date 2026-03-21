@@ -29,6 +29,13 @@ By default, this plugin reads MPD and clerk connection settings from the main `m
 
 Add the widget to a bar section in DMS first. A loaded plugin is not enough for DMS widget IPC; it must actually be mounted as a bar widget.
 
+Build the shared watcher binary first:
+
+```sh
+cd /home/carnager/Code/dank-material-shell-plugins/mpd
+go build -o mpdwatch ./mpd_watch.go
+```
+
 Useful commands:
 
 ```sh
@@ -48,4 +55,4 @@ dms ipc call widget hide mpdBrowser
 
 - [`../mpd`](../mpd) remains the main track widget.
 - `mpdBrowser` reuses the same MPD / clerk settings by default through `sharedPluginId: "mpd"`.
-- Both plugins rely on the same watcher backend in `../mpd/mpd_watch.py`.
+- Both plugins rely on the same watcher backend in `../mpd/mpdwatch`, built from `../mpd/mpd_watch.go`.
