@@ -186,6 +186,44 @@ func normalizeClerkBaseURL(value string) string {
 	return strings.TrimRight(strings.TrimSpace(value), "/")
 }
 
+func readConfigString(configPath, sectionName, keyName string) string {
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return ""
+	}
+
+	inSection := false
+	for _, rawLine := range strings.Split(string(data), "\n") {
+		line := strings.TrimSpace(rawLine)
+		if idx := strings.IndexAny(line, "#;"); idx >= 0 {
+			line = strings.TrimSpace(line[:idx])
+		}
+		if line == "" {
+			continue
+		}
+		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
+			inSection = strings.TrimSpace(line[1:len(line)-1]) == sectionName
+			continue
+		}
+		if !inSection {
+			continue
+		}
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		key := strings.TrimSpace(parts[0])
+		value := strings.TrimSpace(parts[1])
+		if key != keyName {
+			continue
+		}
+		value = strings.Trim(value, `"'`)
+		return value
+	}
+
+	return ""
+}
+
 func resolveClerkAPIBaseURL(baseURLArg string) string {
 	normalized := normalizeClerkBaseURL(baseURLArg)
 	if normalized != "" {
@@ -201,42 +239,8 @@ func resolveClerkAPIBaseURL(baseURLArg string) string {
 		xdgConfigHome = filepath.Join(home, ".config")
 	}
 
-	configPath := filepath.Join(xdgConfigHome, "clerk", "clerk-api-rofi.conf")
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		return ""
-	}
-
-	inGeneral := false
-	for _, rawLine := range strings.Split(string(data), "\n") {
-		line := strings.TrimSpace(rawLine)
-		if idx := strings.IndexAny(line, "#;"); idx >= 0 {
-			line = strings.TrimSpace(line[:idx])
-		}
-		if line == "" {
-			continue
-		}
-		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
-			inGeneral = strings.TrimSpace(line[1:len(line)-1]) == "general"
-			continue
-		}
-		if !inGeneral {
-			continue
-		}
-		parts := strings.SplitN(line, "=", 2)
-		if len(parts) != 2 {
-			continue
-		}
-		key := strings.TrimSpace(parts[0])
-		value := strings.TrimSpace(parts[1])
-		if key != "api_base_url" {
-			continue
-		}
-		value = strings.Trim(value, `"'`)
-		return normalizeClerkBaseURL(value)
-	}
-
-	return ""
+	clerkConfigDir := filepath.Join(xdgConfigHome, "clerk")
+	return normalizeClerkBaseURL(readConfigString(filepath.Join(clerkConfigDir, "clerk-rofi.toml"), "api", "base_url"))
 }
 
 func clerkRequest(baseURL, endpoint, method string, payload any) (json.RawMessage, error) {

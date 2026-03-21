@@ -41,7 +41,7 @@ Supported `format` placeholders:
 
 ## Clerk Integration
 
-If `clerkApiBaseUrl` is empty, the watcher tries to read `~/.config/clerk/clerk-api-rofi.conf` and uses `general.api_base_url` from there.
+If `clerkApiBaseUrl` is empty, the watcher tries `~/.config/clerk/clerk-rofi.toml` and reads `api.base_url`.
 
 Clerk is used for:
 
