@@ -273,6 +273,13 @@ PluginComponent {
             albumBrowserFocusScope.forceActiveFocus();
     }
 
+    function cycleAlbumBrowserMode(step) {
+        if (step < 0)
+            setAlbumBrowserMode(albumBrowserMode === "latest" ? "album" : "latest", false);
+        else
+            setAlbumBrowserMode(albumBrowserMode === "album" ? "latest" : "album", false);
+    }
+
     function triggerFrameworkPopout() {
         const savedClickAction = pillClickAction;
         pillClickAction = null;
@@ -346,6 +353,12 @@ PluginComponent {
         if (event.key === Qt.Key_Delete) {
             if (albumBrowserSearch.length > 0)
                 albumBrowserSearch = "";
+            event.accepted = true;
+            return;
+        }
+
+        if (event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab) {
+            cycleAlbumBrowserMode((event.modifiers & Qt.ShiftModifier) || event.key === Qt.Key_Backtab ? -1 : 1);
             event.accepted = true;
             return;
         }
