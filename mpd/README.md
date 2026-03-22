@@ -21,7 +21,7 @@ The plugin id is `mpd`.
 - `host`: MPD host name or IP address
 - `port`: MPD TCP port
 - `password`: optional MPD password
-- `clerkApiBaseUrl`: optional clerk API base URL
+- `clerkApiBaseUrl`: optional Clerk API target
 - `watcherBinary`: path or command name for the `mpdwatch` binary
 - `format`: bar text template
 - `cover`: `true` or `false` for bar cover art
@@ -41,7 +41,14 @@ Supported `format` placeholders:
 
 ## Clerk Integration
 
-If `clerkApiBaseUrl` is empty, the watcher tries `~/.config/clerk/clerk-rofi.toml` and reads `api.base_url`.
+If `clerkApiBaseUrl` is empty, the watcher tries `~/.config/clerk/clerk-rofi.toml` and reads `api.address` first, then `api.base_url` for compatibility.
+
+Accepted Clerk target forms:
+
+- `local`
+- `host:port`
+- a Unix socket path
+- a full URL such as `http://localhost:6601/api/v1`
 
 Clerk is used for:
 

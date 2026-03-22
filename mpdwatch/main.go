@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"crypto/sha1"
 	"encoding/json"
 	"errors"
@@ -21,6 +22,8 @@ import (
 )
 
 const clerkCacheTTL = 60 * time.Second
+
+const clerkLocalAPIBaseURL = "http://clerkd/api/v1"
 
 var (
 	clerkAlbumCache          = map[string]clerkAlbumRef{}
@@ -126,7 +129,9 @@ type mpdClient struct {
 func emit(payload any) {
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetEscapeHTML(false)
-	_ = enc.Encode(payload)
+	if err := enc.Encode(payload); err != nil {
+		os.Exit(0)
+	}
 }
 
 func extractYear(value string) string {
@@ -224,10 +229,37 @@ func readConfigString(configPath, sectionName, keyName string) string {
 	return ""
 }
 
-func resolveClerkAPIBaseURL(baseURLArg string) string {
-	normalized := normalizeClerkBaseURL(baseURLArg)
-	if normalized != "" {
-		return normalized
+func defaultClerkSocketPath() string {
+	runtimeDir := os.Getenv("XDG_RUNTIME_DIR")
+	if runtimeDir == "" {
+		runtimeDir = filepath.Join(os.TempDir(), fmt.Sprintf("clerk-%d", os.Getuid()))
+	}
+	return filepath.Join(runtimeDir, "clerk", "clerkd.sock")
+}
+
+func isLocalClerkAddress(value string) bool {
+	return strings.EqualFold(strings.TrimSpace(value), "local")
+}
+
+func isUnixClerkAddress(value string) bool {
+	value = strings.TrimSpace(value)
+	return strings.Contains(value, "/") || strings.HasPrefix(value, ".")
+}
+
+func readConfigStringAny(configPath, sectionName string, keyNames ...string) string {
+	for _, keyName := range keyNames {
+		value := readConfigString(configPath, sectionName, keyName)
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func resolveClerkAPIAddress(addressArg string) string {
+	address := strings.TrimSpace(addressArg)
+	if address != "" {
+		return address
 	}
 
 	xdgConfigHome := os.Getenv("XDG_CONFIG_HOME")
@@ -240,16 +272,50 @@ func resolveClerkAPIBaseURL(baseURLArg string) string {
 	}
 
 	clerkConfigDir := filepath.Join(xdgConfigHome, "clerk")
-	return normalizeClerkBaseURL(readConfigString(filepath.Join(clerkConfigDir, "clerk-rofi.toml"), "api", "base_url"))
+	return strings.TrimSpace(readConfigStringAny(filepath.Join(clerkConfigDir, "clerk-rofi.toml"), "api", "address", "base_url"))
 }
 
-func clerkRequest(baseURL, endpoint, method string, payload any) (json.RawMessage, error) {
-	normalizedBaseURL := normalizeClerkBaseURL(baseURL)
-	if normalizedBaseURL == "" {
+func newLocalClerkHTTPClient(timeout time.Duration, socketPath string) *http.Client {
+	transport := &http.Transport{
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			var dialer net.Dialer
+			return dialer.DialContext(ctx, "unix", socketPath)
+		},
+	}
+	return &http.Client{
+		Timeout:   timeout,
+		Transport: transport,
+	}
+}
+
+func clerkHTTPClientAndBaseURL(address string) (*http.Client, string, error) {
+	address = strings.TrimSpace(address)
+	if address == "" {
+		return nil, "", nil
+	}
+	if strings.HasPrefix(address, "http://") || strings.HasPrefix(address, "https://") {
+		return &http.Client{Timeout: 5 * time.Second}, normalizeClerkBaseURL(address), nil
+	}
+	if isLocalClerkAddress(address) {
+		socketPath := defaultClerkSocketPath()
+		return newLocalClerkHTTPClient(5*time.Second, socketPath), clerkLocalAPIBaseURL, nil
+	}
+	if isUnixClerkAddress(address) {
+		return newLocalClerkHTTPClient(5*time.Second, address), clerkLocalAPIBaseURL, nil
+	}
+	return &http.Client{Timeout: 5 * time.Second}, "http://" + strings.TrimRight(address, "/") + "/api/v1", nil
+}
+
+func clerkRequest(address, endpoint, method string, payload any) (json.RawMessage, error) {
+	httpClient, baseURL, err := clerkHTTPClientAndBaseURL(address)
+	if err != nil {
+		return nil, err
+	}
+	if baseURL == "" || httpClient == nil {
 		return nil, nil
 	}
 
-	url := normalizedBaseURL + "/" + strings.TrimLeft(endpoint, "/")
+	url := baseURL + "/" + strings.TrimLeft(endpoint, "/")
 	var body io.Reader
 	if payload != nil {
 		encoded, err := json.Marshal(payload)
@@ -267,7 +333,7 @@ func clerkRequest(baseURL, endpoint, method string, payload any) (json.RawMessag
 		req.Header.Set("Content-Type", "application/json")
 	}
 
-	resp, err := (&http.Client{Timeout: 5 * time.Second}).Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -295,8 +361,7 @@ func clerkAlbumCacheKey(albumArtist, album, date string) string {
 }
 
 func fetchClerkAlbumCache(baseURL string, force bool) map[string]clerkAlbumRef {
-	normalizedBaseURL := normalizeClerkBaseURL(baseURL)
-	if normalizedBaseURL == "" {
+	if strings.TrimSpace(baseURL) == "" {
 		return map[string]clerkAlbumRef{}
 	}
 
@@ -305,7 +370,7 @@ func fetchClerkAlbumCache(baseURL string, force bool) map[string]clerkAlbumRef {
 		return clerkAlbumCache
 	}
 
-	raw, err := clerkRequest(normalizedBaseURL, "albums", http.MethodGet, nil)
+	raw, err := clerkRequest(baseURL, "albums", http.MethodGet, nil)
 	if err != nil || raw == nil {
 		if now.Before(clerkAlbumCacheExpiresAt) && len(clerkAlbumCache) > 0 {
 			return clerkAlbumCache
@@ -351,8 +416,7 @@ func normalizeClerkAlbumEntry(album map[string]any) browserAlbumEntry {
 }
 
 func fetchClerkAlbumList(baseURL, mode string) ([]browserAlbumEntry, error) {
-	normalizedBaseURL := normalizeClerkBaseURL(baseURL)
-	if normalizedBaseURL == "" {
+	if strings.TrimSpace(baseURL) == "" {
 		return nil, errors.New("clerk API unavailable")
 	}
 
@@ -361,7 +425,7 @@ func fetchClerkAlbumList(baseURL, mode string) ([]browserAlbumEntry, error) {
 		endpoint = "latest_albums"
 	}
 
-	raw, err := clerkRequest(normalizedBaseURL, endpoint, http.MethodGet, nil)
+	raw, err := clerkRequest(baseURL, endpoint, http.MethodGet, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -1331,7 +1395,7 @@ func main() {
 	flag.Parse()
 
 	host, password := resolveHostAndPassword(*hostFlag, *passwordFlag)
-	clerkAPIBaseURL := resolveClerkAPIBaseURL(*clerkFlag)
+	clerkAPIBaseURL := resolveClerkAPIAddress(*clerkFlag)
 	if *actionFlag != "" {
 		if err := performAction(host, *portFlag, password, *actionFlag, *argFlag, clerkAPIBaseURL); err != nil {
 			os.Exit(1)

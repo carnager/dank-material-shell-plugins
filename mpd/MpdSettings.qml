@@ -57,8 +57,8 @@ PluginSettings {
     StringSetting {
         settingKey: "clerkApiBaseUrl"
         label: "Clerk API"
-        description: "Base URL for clerk-service, used for album ratings and random playback. Leave empty to read ~/.config/clerk/clerk-rofi.toml"
-        placeholder: "http://localhost:6601/api/v1"
+        description: "Clerk API target used for album ratings and random playback. Accepts local, host:port, a Unix socket path, or a full URL. Leave empty to read ~/.config/clerk/clerk-rofi.toml"
+        placeholder: "local"
         defaultValue: ""
     }
 
