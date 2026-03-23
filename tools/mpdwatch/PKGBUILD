@@ -1,0 +1,20 @@
+pkgname=mpdwatch
+pkgver="$(<VERSION)"
+pkgrel=1
+pkgdesc="Standalone MPD watcher and control helper for Dank Material Shell plugins"
+arch=('x86_64' 'aarch64')
+url="https://github.com/carnager/dank-material-shell-plugins"
+license=('GPL')
+makedepends=('go')
+
+build() {
+  export CGO_ENABLED=0
+  export GOFLAGS="-trimpath -buildvcs=false"
+  go build -ldflags='-s -w' -o mpdwatch .
+}
+
+package() {
+  install -Dm755 mpdwatch "$pkgdir/usr/bin/mpdwatch"
+  install -Dm644 README.md "$pkgdir/usr/share/doc/mpdwatch/README.md"
+  install -Dm644 VERSION "$pkgdir/usr/share/doc/mpdwatch/VERSION"
+}

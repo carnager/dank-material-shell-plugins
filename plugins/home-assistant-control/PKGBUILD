@@ -1,0 +1,18 @@
+pkgname=dms-plugin-home-assistant-control
+pkgver="$(<VERSION)"
+pkgrel=1
+pkgdesc="Home Assistant widget for Dank Material Shell"
+arch=('any')
+url="https://github.com/carnager/dank-material-shell-plugins"
+license=('GPL')
+depends=('python' 'python-websockets' 'curl')
+
+package() {
+  local dest="$pkgdir/etc/xdg/quickshell/dms-plugins/home-assistant-control"
+
+  install -d "$dest"
+  cp -a . "$dest/"
+
+  rm -f "$dest/PKGBUILD" "$dest/default.nix" "$dest/VERSION"
+  find "$dest" -name '__pycache__' -type d -exec rm -rf {} +
+}

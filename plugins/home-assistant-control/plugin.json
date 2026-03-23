@@ -1,0 +1,12 @@
+{
+  "id": "homeAssistantControl",
+  "name": "Home Assistant Control",
+  "description": "Controls Home Assistant lights and switches",
+  "version": "1.0.0",
+  "author": "carnager",
+  "icon": "lightbulb",
+  "type": "widget",
+  "component": "./HomeAssistantWidget.qml",
+  "settings": "./HomeAssistantSettings.qml",
+  "permissions": ["settings_read", "settings_write"]
+}
