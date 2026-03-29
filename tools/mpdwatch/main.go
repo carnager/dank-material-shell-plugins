@@ -13,6 +13,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -120,6 +121,26 @@ type albumBrowserPayload struct {
 	Error  string              `json:"error"`
 }
 
+type albumUploadRequest struct {
+	Album       string `json:"album"`
+	AlbumArtist string `json:"albumartist"`
+	Date        string `json:"date"`
+}
+
+type albumUploadPayload struct {
+	Artist         string   `json:"artist"`
+	AlbumName      string   `json:"album_name"`
+	Date           string   `json:"date"`
+	CommonDir      string   `json:"common_dir"`
+	AlbumFilesList []string `json:"album_files_list"`
+}
+
+type albumUploadResponse struct {
+	Status  string `json:"status"`
+	URL     string `json:"url"`
+	Message string `json:"message"`
+}
+
 type mpdClient struct {
 	conn net.Conn
 	r    *bufio.Reader
@@ -191,6 +212,18 @@ func normalizeClerkBaseURL(value string) string {
 	return strings.TrimRight(strings.TrimSpace(value), "/")
 }
 
+func expandHomePath(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" || !strings.HasPrefix(value, "~/") {
+		return value
+	}
+	homeDir, err := os.UserHomeDir()
+	if err != nil || homeDir == "" {
+		return value
+	}
+	return filepath.Join(homeDir, value[2:])
+}
+
 func readConfigString(configPath, sectionName, keyName string) string {
 	data, err := os.ReadFile(configPath)
 	if err != nil {
@@ -235,6 +268,190 @@ func defaultClerkSocketPath() string {
 		runtimeDir = filepath.Join(os.TempDir(), fmt.Sprintf("clerk-%d", os.Getuid()))
 	}
 	return filepath.Join(runtimeDir, "clerk", "clerkd.sock")
+}
+
+func commonDir(paths []string) string {
+	if len(paths) == 0 {
+		return ""
+	}
+
+	splitPaths := make([][]string, 0, len(paths))
+	for _, path := range paths {
+		clean := strings.TrimSpace(path)
+		if clean == "" {
+			continue
+		}
+		splitPaths = append(splitPaths, strings.Split(clean, "/"))
+	}
+	if len(splitPaths) == 0 {
+		return ""
+	}
+
+	maxParts := len(splitPaths[0])
+	for _, parts := range splitPaths[1:] {
+		if len(parts) < maxParts {
+			maxParts = len(parts)
+		}
+	}
+
+	common := make([]string, 0, maxParts)
+	for idx := 0; idx < maxParts; idx++ {
+		part := splitPaths[0][idx]
+		matches := true
+		for _, parts := range splitPaths[1:] {
+			if parts[idx] != part {
+				matches = false
+				break
+			}
+		}
+		if !matches {
+			break
+		}
+		common = append(common, part)
+	}
+
+	result := strings.Join(common, "/")
+	if strings.HasPrefix(paths[0], "/") && !strings.HasPrefix(result, "/") {
+		return "/" + result
+	}
+	return result
+}
+
+func parseUploadAPIURL(scriptPath string) string {
+	scriptPath = expandHomePath(scriptPath)
+	if scriptPath == "" {
+		return ""
+	}
+
+	data, err := os.ReadFile(scriptPath)
+	if err != nil {
+		return ""
+	}
+
+	pattern := regexp.MustCompile(`(?m)^\s*API_URL\s*=\s*["']([^"']+)["']`)
+	match := pattern.FindSubmatch(data)
+	if len(match) < 2 {
+		return ""
+	}
+
+	return strings.TrimSpace(string(match[1]))
+}
+
+func copyToClipboard(text string) {
+	if strings.TrimSpace(text) == "" {
+		return
+	}
+
+	commands := []struct {
+		name string
+		args []string
+	}{
+		{name: "wl-copy", args: nil},
+		{name: "xclip", args: []string{"-selection", "clipboard"}},
+		{name: "xsel", args: []string{"--clipboard", "--input"}},
+		{name: "pbcopy", args: nil},
+	}
+
+	for _, command := range commands {
+		if _, err := exec.LookPath(command.name); err != nil {
+			continue
+		}
+		cmd := exec.Command(command.name, command.args...)
+		cmd.Stdin = strings.NewReader(text)
+		if err := cmd.Run(); err == nil {
+			return
+		}
+	}
+}
+
+func sendNotification(title, message string) {
+	if _, err := exec.LookPath("notify-send"); err != nil {
+		return
+	}
+	_ = exec.Command("notify-send", title, message).Run()
+}
+
+func uploadAlbum(client *mpdClient, request albumUploadRequest, uploadScriptPath string) error {
+	apiURL := parseUploadAPIURL(uploadScriptPath)
+	if apiURL == "" {
+		return errors.New("upload API URL unavailable")
+	}
+
+	uploadLabel := strings.TrimSpace(fmt.Sprintf("%s - %s", request.AlbumArtist, request.Album))
+	if uploadLabel == "-" || uploadLabel == "" {
+		uploadLabel = strings.TrimSpace(request.Album)
+	}
+	sendNotification("Album Upload Started", uploadLabel)
+
+	info := buildAlbumInfoForValues(client, request.AlbumArtist, request.Album, request.Date, "", nil)
+	files := make([]string, 0, len(info.Files))
+	for _, filePath := range info.Files {
+		if strings.HasSuffix(strings.ToLower(filePath), ".flac") {
+			files = append(files, filePath)
+		}
+	}
+	if len(files) == 0 {
+		return errors.New("no uploadable album files found")
+	}
+
+	payload := albumUploadPayload{
+		Artist:         request.AlbumArtist,
+		AlbumName:      request.Album,
+		Date:           firstNonEmpty(request.Date, info.Year),
+		CommonDir:      commonDir(files),
+		AlbumFilesList: files,
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, apiURL, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := (&http.Client{Timeout: 300 * time.Second}).Do(req)
+	if err != nil {
+		sendNotification("Album Upload Failed", err.Error())
+		return err
+	}
+	defer resp.Body.Close()
+
+	responseBody, err := io.ReadAll(io.LimitReader(resp.Body, 65536))
+	if err != nil {
+		sendNotification("Album Upload Failed", err.Error())
+		return err
+	}
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		err = fmt.Errorf("upload failed: %s", strings.TrimSpace(string(responseBody)))
+		sendNotification("Album Upload Failed", err.Error())
+		return err
+	}
+
+	var result albumUploadResponse
+	if err := json.Unmarshal(responseBody, &result); err == nil {
+		if strings.EqualFold(strings.TrimSpace(result.Status), "success") {
+			copyToClipboard(result.URL)
+			sendNotification("Album Upload Complete", fmt.Sprintf("%s\nLink copied to clipboard.", uploadLabel))
+			return nil
+		}
+		if strings.TrimSpace(result.Message) != "" {
+			err = errors.New(strings.TrimSpace(result.Message))
+			sendNotification("Album Upload Failed", err.Error())
+			return err
+		}
+	}
+
+	if urlText := strings.TrimSpace(string(responseBody)); urlText != "" {
+		copyToClipboard(urlText)
+		sendNotification("Album Upload Complete", fmt.Sprintf("%s\nLink copied to clipboard.", uploadLabel))
+	}
+
+	return nil
 }
 
 func isLocalClerkAddress(value string) bool {
@@ -1162,7 +1379,7 @@ func isValidRatingValue(value string) bool {
 	return false
 }
 
-func performAction(host string, port int, password, action, arg, clerkBaseURL string) error {
+func performAction(host string, port int, password, action, arg, clerkBaseURL, uploadScriptPath string) error {
 	switch action {
 	case "dump_albums":
 		mode := "album"
@@ -1244,6 +1461,18 @@ func performAction(host string, port int, password, action, arg, clerkBaseURL st
 	}
 
 	switch action {
+	case "upload_album":
+		if arg == "" {
+			return nil
+		}
+		var request albumUploadRequest
+		if err := json.Unmarshal([]byte(arg), &request); err != nil {
+			return err
+		}
+		if strings.TrimSpace(request.Album) == "" {
+			return nil
+		}
+		return uploadAlbum(client, request, uploadScriptPath)
 	case "toggle":
 		status, err := client.status()
 		if err != nil {
@@ -1390,6 +1619,7 @@ func main() {
 	portFlag := flag.Int("port", portDefault, "")
 	passwordFlag := flag.String("password", "", "")
 	clerkFlag := flag.String("clerk-api-base-url", "", "")
+	uploadScriptFlag := flag.String("upload-script", "", "")
 	actionFlag := flag.String("action", "", "")
 	argFlag := flag.String("arg", "", "")
 	flag.Parse()
@@ -1397,7 +1627,8 @@ func main() {
 	host, password := resolveHostAndPassword(*hostFlag, *passwordFlag)
 	clerkAPIBaseURL := resolveClerkAPIAddress(*clerkFlag)
 	if *actionFlag != "" {
-		if err := performAction(host, *portFlag, password, *actionFlag, *argFlag, clerkAPIBaseURL); err != nil {
+		if err := performAction(host, *portFlag, password, *actionFlag, *argFlag, clerkAPIBaseURL, *uploadScriptFlag); err != nil {
+			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
 		return

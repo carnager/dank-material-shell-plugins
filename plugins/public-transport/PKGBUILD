@@ -1,19 +1,18 @@
-pkgname=dms-plugin-mpd
+pkgname=dms-plugin-public-transport
 pkgver="$(<VERSION)"
 pkgrel=1
-pkgdesc="MPD track widget for Dank Material Shell"
+pkgdesc="Public transport widget for Dank Material Shell"
 arch=('any')
 url="https://github.com/carnager/dank-material-shell-plugins"
 license=('GPL')
-depends=('mpdwatch')
+depends=('python')
 
 package() {
-  local dest="$pkgdir/etc/xdg/quickshell/dms-plugins/mpd"
+  local dest="$pkgdir/etc/xdg/quickshell/dms-plugins/public-transport"
 
   install -d "$dest"
   cp -a "$startdir"/. "$dest/"
 
   rm -f "$dest/PKGBUILD" "$dest/default.nix" "$dest/VERSION"
-  rm -f "$dest/clerk-api-rofi" "$dest/mpdwatch"
   find "$dest" -name '__pycache__' -type d -exec rm -rf {} +
 }

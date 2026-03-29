@@ -1,0 +1,12 @@
+{
+  "id": "publicTransport",
+  "name": "Public Transport",
+  "description": "Favorite station departures and connection lookup for Dank Material Shell",
+  "version": "1.0.0",
+  "author": "carnager",
+  "icon": "directions_transit",
+  "type": "widget",
+  "component": "./PublicTransportWidget.qml",
+  "settings": "./PublicTransportSettings.qml",
+  "permissions": ["settings_read", "settings_write"]
+}

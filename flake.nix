@@ -20,6 +20,7 @@
           mpd = pkgs.callPackage ./plugins/mpd/default.nix { inherit mpdwatch; };
           mpdBrowser = pkgs.callPackage ./plugins/mpd-browser/default.nix { };
           homeAssistantControl = pkgs.callPackage ./plugins/home-assistant-control/default.nix { };
+          publicTransport = pkgs.callPackage ./plugins/public-transport/default.nix { };
           allPackages = pkgs.symlinkJoin {
             name = "dank-material-shell-packages";
             paths = [
@@ -27,6 +28,7 @@
               mpd
               mpdBrowser
               homeAssistantControl
+              publicTransport
             ];
           };
         in {
@@ -34,6 +36,7 @@
           "dms-plugin-mpd" = mpd;
           "dms-plugin-mpd-browser" = mpdBrowser;
           "dms-plugin-home-assistant-control" = homeAssistantControl;
+          "dms-plugin-public-transport" = publicTransport;
           all = allPackages;
           default = allPackages;
         });

@@ -1,3 +1,4 @@
+import QtCore
 import QtQuick
 import Quickshell
 import Quickshell.Io
@@ -17,6 +18,7 @@ PluginComponent {
     readonly property string password: runtimeConfig.password
     readonly property string clerkApiBaseUrl: runtimeConfig.clerkApiBaseUrl
     readonly property string watcherBinaryPath: runtimeConfig.watcherBinaryPath
+    readonly property string uploadScriptPath: expandHomePath(String(pluginData.uploadScriptPath || "~/.bin/albumshare.py").trim())
     property bool albumBrowserLoading: false
     property string albumBrowserMode: defaultMode
     property string albumBrowserPendingMode: ""
@@ -24,6 +26,7 @@ PluginComponent {
     property string albumBrowserError: ""
     property string albumBrowserSelectedId: ""
     property string albumBrowserActionPromptId: ""
+    property string albumBrowserActionMode: "actions"
     property int albumBrowserActionIndex: 0
     property var albumBrowserAlbums: []
     property var albumBrowserCache: ({})
@@ -90,6 +93,38 @@ PluginComponent {
         return match ? match[1] : "";
     }
 
+    function expandHomePath(value) {
+        const text = String(value || "").trim();
+        if (!text.startsWith("~/"))
+            return text;
+        const homePath = StandardPaths.writableLocation(StandardPaths.HomeLocation);
+        return homePath.length > 0 ? homePath + text.slice(1) : text;
+    }
+
+    function normalizedRating(value) {
+        const number = parseFloat(String(value || "").trim());
+        if (!isFinite(number) || number <= 0)
+            return 0;
+        return Math.max(0, Math.min(5, number));
+    }
+
+    function displayedStarCount(value) {
+        return Math.round(normalizedRating(value));
+    }
+
+    function ratingPayloadForStar(value, starIndex) {
+        const selectedStars = Math.max(1, starIndex + 1);
+        return displayedStarCount(value) === selectedStars ? "Delete" : String(selectedStars * 2);
+    }
+
+    function starText(value) {
+        const filled = displayedStarCount(value);
+        let text = "";
+        for (let i = 0; i < 5; ++i)
+            text += i < filled ? "★" : "☆";
+        return text;
+    }
+
     function buildAlbumBrowserCommand(mode) {
         const args = [watcherBinaryPath, "--host", host.length > 0 ? host : "localhost", "--port", port.length > 0 ? port : "6600", "--action", "dump_albums", "--arg", mode === "latest" ? "latest" : "album"];
         if (password.length > 0)
@@ -107,6 +142,28 @@ PluginComponent {
             args.push("--password", password);
         if (clerkApiBaseUrl.length > 0)
             args.push("--clerk-api-base-url", clerkApiBaseUrl);
+        Quickshell.execDetached(args);
+    }
+
+    function runUpload(album) {
+        const entry = album || null;
+        if (!entry || uploadScriptPath.length === 0)
+            return;
+
+        const args = [
+            watcherBinaryPath,
+            "--host", host.length > 0 ? host : "localhost",
+            "--port", port.length > 0 ? port : "6600",
+            "--action", "upload_album",
+            "--arg", JSON.stringify({
+                    "albumartist": String(entry.albumartist || ""),
+                    "album": String(entry.album || ""),
+                    "date": String(entry.date || entry.year || "")
+                }),
+            "--upload-script", uploadScriptPath
+        ];
+        if (password.length > 0)
+            args.push("--password", password);
         Quickshell.execDetached(args);
     }
 
@@ -145,7 +202,15 @@ PluginComponent {
             return "insert";
         if (index === 2)
             return "replace";
+        if (index === 3)
+            return "rate";
+        if (index === 4)
+            return "upload";
         return "add";
+    }
+
+    function albumBrowserActionCount() {
+        return 5;
     }
 
     function syncAlbumBrowserSelection() {
@@ -153,6 +218,7 @@ PluginComponent {
         if (albums.length === 0) {
             albumBrowserSelectedId = "";
             albumBrowserActionPromptId = "";
+            albumBrowserActionMode = "actions";
             albumBrowserActionIndex = 0;
             return;
         }
@@ -175,8 +241,10 @@ PluginComponent {
                     break;
                 }
             }
-            if (!actionAlbumVisible)
+            if (!actionAlbumVisible) {
                 albumBrowserActionPromptId = "";
+                albumBrowserActionMode = "actions";
+            }
         }
     }
 
@@ -195,6 +263,7 @@ PluginComponent {
         const nextIndex = (currentIndex + step + albums.length) % albums.length;
         albumBrowserSelectedId = String(albums[nextIndex].id || "");
         albumBrowserActionPromptId = "";
+        albumBrowserActionMode = "actions";
     }
 
     function albumBrowserSelectedIndex() {
@@ -234,7 +303,8 @@ PluginComponent {
     }
 
     function cycleAlbumBrowserAction(step) {
-        albumBrowserActionIndex = (albumBrowserActionIndex + step + 3) % 3;
+        const count = albumBrowserActionCount();
+        albumBrowserActionIndex = (albumBrowserActionIndex + step + count) % count;
     }
 
     function loadAlbumBrowser(mode, forceRefresh) {
@@ -264,6 +334,7 @@ PluginComponent {
     function setAlbumBrowserMode(mode, forceRefresh) {
         const normalized = mode === "latest" ? "latest" : "album";
         albumBrowserActionPromptId = "";
+        albumBrowserActionMode = "actions";
         albumBrowserActionIndex = 0;
         loadAlbumBrowser(normalized, !!forceRefresh);
         if (albumBrowserFocusScope)
@@ -292,6 +363,7 @@ PluginComponent {
         albumBrowserMode = normalized;
         showAlbumBrowserRandomMenu = false;
         albumBrowserActionPromptId = "";
+        albumBrowserActionMode = "actions";
         albumBrowserActionIndex = 0;
         albumBrowserSearch = "";
         loadAlbumBrowser(normalized, false);
@@ -312,16 +384,43 @@ PluginComponent {
             return;
         albumBrowserSelectedId = id;
         albumBrowserActionPromptId = id;
+        albumBrowserActionMode = "actions";
         albumBrowserActionIndex = 0;
     }
 
     function runAlbumBrowserAction(actionName) {
         const albumId = String(albumBrowserActionPromptId || albumBrowserSelectedId || "");
         const action = String(actionName || "").trim().toLowerCase();
-        if (albumId.length === 0 || ["add", "insert", "replace"].indexOf(action) < 0)
+        const album = albumBrowserEntryById(albumId);
+        if (albumId.length === 0 || !album)
             return;
+
+        if (action === "rate") {
+            albumBrowserActionMode = "rating";
+            albumBrowserActionIndex = Math.max(0, displayedStarCount(album.rating) - 1);
+            return;
+        }
+
+        if (action === "upload") {
+            closePopout();
+            runUpload(album);
+            return;
+        }
+
+        if (["add", "insert", "replace"].indexOf(action) >= 0) {
+            closePopout();
+            runControl("queue_clerk_album", action + ":" + albumId + ":" + albumBrowserMode);
+        }
+    }
+
+    function setAlbumBrowserRating(starIndex) {
+        const albumId = String(albumBrowserActionPromptId || albumBrowserSelectedId || "");
+        const album = albumBrowserEntryById(albumId);
+        if (albumId.length === 0 || !album)
+            return;
+        albumBrowserCache = ({});
         closePopout();
-        runControl("queue_clerk_album", action + ":" + albumId + ":" + albumBrowserMode);
+        runControl("set_album_rating", albumId + ":" + ratingPayloadForStar(album.rating, starIndex));
     }
 
     function handleAlbumBrowserKey(event) {
@@ -332,7 +431,10 @@ PluginComponent {
         }
 
         if (event.key === Qt.Key_Escape) {
-            if (albumBrowserActionPromptId.length > 0)
+            if (albumBrowserActionMode === "rating") {
+                albumBrowserActionMode = "actions";
+                albumBrowserActionIndex = 0;
+            } else if (albumBrowserActionPromptId.length > 0)
                 albumBrowserActionPromptId = "";
             else
                 closePopout();
@@ -396,6 +498,7 @@ PluginComponent {
                 if (albums.length > 0) {
                     albumBrowserSelectedId = String(albums[0].id || "");
                     albumBrowserActionPromptId = "";
+                    albumBrowserActionMode = "actions";
                     ensureAlbumBrowserSelectionVisible(ListView.Beginning);
                 }
             }
@@ -409,6 +512,7 @@ PluginComponent {
                 if (albums.length > 0) {
                     albumBrowserSelectedId = String(albums[albums.length - 1].id || "");
                     albumBrowserActionPromptId = "";
+                    albumBrowserActionMode = "actions";
                     ensureAlbumBrowserSelectionVisible(ListView.End);
                 }
             }
@@ -429,8 +533,12 @@ PluginComponent {
         }
 
         if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && !event.isAutoRepeat) {
-            if (albumBrowserActionPromptId.length > 0)
-                runAlbumBrowserAction(albumBrowserActionName(albumBrowserActionIndex));
+            if (albumBrowserActionPromptId.length > 0) {
+                if (albumBrowserActionMode === "rating")
+                    setAlbumBrowserRating(albumBrowserActionIndex);
+                else
+                    runAlbumBrowserAction(albumBrowserActionName(albumBrowserActionIndex));
+            }
             else if (albumBrowserSelectedId.length > 0)
                 promptAlbumBrowserActions(albumBrowserSelectedId);
             event.accepted = true;
@@ -495,6 +603,7 @@ PluginComponent {
             root.albumBrowserAlbums = [];
             root.albumBrowserSelectedId = "";
             root.albumBrowserActionPromptId = "";
+            root.albumBrowserActionMode = "actions";
             if (root.pluginPopoutVisible)
                 Qt.callLater(() => root.loadAlbumBrowser(root.albumBrowserMode, true));
         }
@@ -608,6 +717,7 @@ PluginComponent {
                     if (!root.pluginPopoutVisible) {
                         root.showAlbumBrowserRandomMenu = false;
                         root.albumBrowserActionPromptId = "";
+                        root.albumBrowserActionMode = "actions";
                         root.albumBrowserActionIndex = 0;
                         root.albumBrowserSearch = "";
                     }
@@ -836,14 +946,14 @@ PluginComponent {
                                 spacing: Theme.spacingXS
 
                                 Repeater {
-                                    model: ["Add", "Insert", "Replace"]
+                                    model: root.albumBrowserActionMode === "rating" ? [1, 2, 3, 4, 5] : ["Add", "Insert", "Replace", "Rate", "Upload"]
 
                                     Rectangle {
-                                        required property string modelData
+                                        required property var modelData
                                         required property int index
                                         readonly property int actionIndex: index
 
-                                        width: (parent.width - Theme.spacingXS * 2) / 3
+                                        width: (parent.width - Theme.spacingXS * 4) / 5
                                         height: 26
                                         radius: 8
                                         color: root.albumBrowserActionIndex === actionIndex ? Theme.primary : "transparent"
@@ -852,7 +962,7 @@ PluginComponent {
 
                                         StyledText {
                                             anchors.centerIn: parent
-                                            text: modelData
+                                            text: root.albumBrowserActionMode === "rating" ? Array(modelData + 1).join("★") : modelData
                                             font.pixelSize: Theme.fontSizeSmall
                                             color: root.albumBrowserActionIndex === actionIndex ? Theme.background : Theme.surfaceText
                                         }
@@ -863,7 +973,10 @@ PluginComponent {
                                             cursorShape: Qt.PointingHandCursor
                                             onClicked: {
                                                 root.albumBrowserActionIndex = actionIndex;
-                                                root.runAlbumBrowserAction(root.albumBrowserActionName(actionIndex));
+                                                if (root.albumBrowserActionMode === "rating")
+                                                    root.setAlbumBrowserRating(actionIndex);
+                                                else
+                                                    root.runAlbumBrowserAction(root.albumBrowserActionName(actionIndex));
                                             }
                                         }
                                     }
@@ -949,7 +1062,7 @@ PluginComponent {
                                         spacing: Theme.spacingS
 
                                         Column {
-                                            width: parent.width - 56
+                                            width: parent.width - 92
                                             spacing: 1
 
                                             StyledText {
@@ -962,17 +1075,19 @@ PluginComponent {
 
                                             StyledText {
                                                 width: parent.width
-                                                text: [modelData.date || modelData.year || "", modelData.rating && modelData.rating.length > 0 ? "★ " + modelData.rating : ""].filter(part => part.length > 0).join(" • ")
+                                                text: modelData.date || modelData.year || ""
                                                 font.pixelSize: Theme.fontSizeSmall
                                                 color: Theme.surfaceVariantText
                                                 elide: Text.ElideRight
                                             }
                                         }
 
-                                        DankIcon {
+                                        StyledText {
+                                            width: 68
                                             anchors.verticalCenter: parent.verticalCenter
-                                            name: String(modelData.id || "") === root.albumBrowserActionPromptId ? "subdirectory_arrow_right" : "keyboard_return"
-                                            size: 14
+                                            horizontalAlignment: Text.AlignRight
+                                            text: root.displayedStarCount(modelData.rating) > 0 ? root.starText(modelData.rating) : ""
+                                            font.pixelSize: Theme.fontSizeSmall
                                             color: selected ? Theme.primary : Theme.surfaceVariantText
                                         }
                                     }

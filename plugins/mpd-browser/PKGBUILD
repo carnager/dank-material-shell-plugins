@@ -11,7 +11,7 @@ package() {
   local dest="$pkgdir/etc/xdg/quickshell/dms-plugins/mpd-browser"
 
   install -d "$dest"
-  cp -a . "$dest/"
+  cp -a "$startdir"/. "$dest/"
 
   rm -f "$dest/PKGBUILD" "$dest/default.nix" "$dest/VERSION"
   find "$dest" -name '__pycache__' -type d -exec rm -rf {} +
