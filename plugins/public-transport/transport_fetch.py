@@ -485,17 +485,16 @@ def leg_summary(leg: dict[str, object]) -> dict[str, object]:
     }
 
 
-def journey_results(base_url: str, from_spec: str, to_spec: str) -> dict[str, object]:
+def journey_results(base_url: str, from_spec: str, to_spec: str, page_cursor: str = "") -> dict[str, object]:
     origin = resolve_location(base_url, from_spec)
     destination = resolve_location(base_url, to_spec)
-    data = fetch_json(
-        base_url,
-        "/api/v5/plan",
-        {
-            "fromPlace": origin["id"],
-            "toPlace": destination["id"],
-        },
-    )
+    params = {
+        "fromPlace": origin["id"],
+        "toPlace": destination["id"],
+    }
+    if page_cursor.strip():
+        params["pageCursor"] = page_cursor.strip()
+    data = fetch_json(base_url, "/api/v5/plan", params)
     journeys = []
     for itinerary in (data.get("itineraries") if isinstance(data, dict) else []) or []:
         if not isinstance(itinerary, dict):
@@ -527,7 +526,13 @@ def journey_results(base_url: str, from_spec: str, to_spec: str) -> dict[str, ob
                 "legs": legs,
             }
         )
-    return {"from": origin, "to": destination, "journeys": journeys}
+    return {
+        "from": origin,
+        "to": destination,
+        "journeys": journeys,
+        "nextPageCursor": str(data.get("nextPageCursor") or "") if isinstance(data, dict) else "",
+        "previousPageCursor": str(data.get("previousPageCursor") or "") if isinstance(data, dict) else "",
+    }
 
 
 def main() -> None:
@@ -548,7 +553,7 @@ def main() -> None:
         elif action == "journeys":
             if len(args) < 2:
                 raise TransportError("Die Verbindungssuche benoetigt Start und Ziel.")
-            payload = journey_results(base_url, args[0], args[1])
+            payload = journey_results(base_url, args[0], args[1], args[2] if len(args) > 2 else "")
         else:
             raise TransportError(f"Nicht unterstuetzte Aktion '{action}'.")
 

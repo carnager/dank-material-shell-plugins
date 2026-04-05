@@ -41,6 +41,8 @@ PluginComponent {
     property string toId: ""
     property bool pluginPopoutVisible: false
     property string expandedJourneyKey: ""
+    property string journeyNextCursor: ""
+    property string journeyPreviousCursor: ""
     readonly property string fetchScriptPath: {
         const url = Qt.resolvedUrl("transport_fetch.py").toString();
         return url.startsWith("file://") ? url.substring(7) : url;
@@ -301,6 +303,8 @@ PluginComponent {
             fromText = String(stationName || "");
             fromId = String(stationId || "");
         }
+        journeyNextCursor = "";
+        journeyPreviousCursor = "";
         clearSearchResults();
         suppressJourneySuggest = false;
     }
@@ -325,9 +329,11 @@ PluginComponent {
         fromId = toId;
         toText = nextFromText;
         toId = nextFromId;
+        journeyNextCursor = "";
+        journeyPreviousCursor = "";
     }
 
-    function searchJourneys() {
+    function searchJourneys(pageCursor) {
         const fromValue = fromId.length > 0 ? fromId : String(fromText || "").trim();
         const toValue = toId.length > 0 ? toId : String(toText || "").trim();
         if (fromValue.length === 0 || toValue.length === 0) {
@@ -341,7 +347,19 @@ PluginComponent {
         journeyError = "";
         journeys = [];
         expandedJourneyKey = "";
-        runFetcher(journeysFetcher, ["journeys", fromValue, toValue]);
+        journeyNextCursor = "";
+        journeyPreviousCursor = "";
+        const args = ["journeys", fromValue, toValue];
+        const cursor = String(pageCursor || "").trim();
+        if (cursor.length > 0)
+            args.push(cursor);
+        runFetcher(journeysFetcher, args);
+    }
+
+    function searchLaterJourneys() {
+        if (journeyNextCursor.length === 0 || journeysFetcher.running)
+            return;
+        searchJourneys(journeyNextCursor);
     }
 
     function scheduleJourneyStationSearch(target, query) {
@@ -626,6 +644,8 @@ PluginComponent {
                     return;
                 }
                 root.journeys = Array.isArray(result.payload.journeys) ? result.payload.journeys : [];
+                root.journeyNextCursor = String(result.payload.nextPageCursor || "");
+                root.journeyPreviousCursor = String(result.payload.previousPageCursor || "");
                 if (result.payload.from) {
                     if (root.fromId.length === 0 || root.fromText.length === 0)
                         root.fromText = String(result.payload.from.name || root.fromText);
@@ -1394,6 +1414,8 @@ PluginComponent {
                                                 onTextChanged: {
                                                     root.fromText = text;
                                                     root.fromId = "";
+                                                    root.journeyNextCursor = "";
+                                                    root.journeyPreviousCursor = "";
                                                     if (root.suppressJourneySuggest || !activeFocus || !root.pluginPopoutVisible)
                                                         return;
                                                     root.clearSearchResults();
@@ -1463,6 +1485,8 @@ PluginComponent {
                                                 onTextChanged: {
                                                     root.toText = text;
                                                     root.toId = "";
+                                                    root.journeyNextCursor = "";
+                                                    root.journeyPreviousCursor = "";
                                                     if (root.suppressJourneySuggest || !activeFocus || !root.pluginPopoutVisible)
                                                         return;
                                                     root.clearSearchResults();
@@ -1492,6 +1516,32 @@ PluginComponent {
                                             hoverEnabled: true
                                             cursorShape: Qt.PointingHandCursor
                                             onClicked: root.searchJourneys()
+                                        }
+                                    }
+
+                                    Rectangle {
+                                        width: parent.width
+                                        height: 32
+                                        radius: 10
+                                        color: laterJourneysArea.containsMouse ? Theme.widgetBaseHoverColor : Theme.surfaceContainer
+                                        border.color: root.journeyNextCursor.length > 0 ? Theme.outline : Theme.surfaceVariant
+                                        border.width: 1
+                                        opacity: root.journeyNextCursor.length > 0 ? 1 : 0.55
+
+                                        StyledText {
+                                            anchors.centerIn: parent
+                                            text: "Spaeter"
+                                            font.pixelSize: Theme.fontSizeSmall
+                                            color: Theme.surfaceText
+                                        }
+
+                                        MouseArea {
+                                            id: laterJourneysArea
+                                            anchors.fill: parent
+                                            enabled: root.journeyNextCursor.length > 0
+                                            hoverEnabled: enabled
+                                            cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                                            onClicked: root.searchLaterJourneys()
                                         }
                                     }
 
