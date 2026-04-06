@@ -1,0 +1,41 @@
+name: Update Latest Tag
+
+on:
+  release:
+    types:
+      - published
+
+permissions:
+  contents: write
+
+jobs:
+  update-latest-tag:
+    if: github.event.release.tag_name != 'latest'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Update latest tag
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git fetch --force --tags origin
+
+          release_commit="$(git rev-list -n 1 "refs/tags/${RELEASE_TAG}")"
+
+          if [ -z "${release_commit}" ]; then
+            echo "Could not resolve release tag ${RELEASE_TAG}" >&2
+            exit 1
+          fi
+
+          git tag -fa latest "${release_commit}" -m "Latest release"
+          git push origin refs/tags/latest --force
