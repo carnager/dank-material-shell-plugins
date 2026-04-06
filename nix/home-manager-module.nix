@@ -7,6 +7,7 @@ let
     name = "dms-plugin-bundle";
     paths = cfg.packages;
   };
+  runtimePackages = lib.concatMap (pkg: pkg.passthru.dmsRuntimePackages or [ ]) cfg.packages;
 in {
   options.programs.dankMaterialShellPlugins = {
     enable = lib.mkEnableOption "user-installed Dank Material Shell plugins";
@@ -19,7 +20,10 @@ in {
   };
 
   config = lib.mkIf (cfg.enable && cfg.packages != [ ]) {
-    home.file.".config/DankMaterialShell/plugins".source =
-      "${bundle}/${helper.pluginInstallRoot}";
+    home.file.".config/DankMaterialShell/plugins" = {
+      source = "${bundle}/${helper.pluginInstallRoot}";
+      recursive = true;
+    };
+    home.packages = runtimePackages;
   };
 }

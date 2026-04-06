@@ -39,11 +39,13 @@ The flake also exposes:
 - a NixOS module at `nixosModules.default` that links packaged plugins into `/etc/xdg/quickshell/dms-plugins`
 - a Home Manager module at `homeManagerModules.default` and `homeManagerModules.dankMaterialShellPlugins` that links packaged plugins into `~/.config/DankMaterialShell/plugins`
 
+Both modules also install runtime helper packages required by the selected plugin packages, such as `mpdwatch` for the MPD plugins.
+
 Example Home Manager usage:
 
 ```nix
 let
-  pluginPkgs = inputs.dmsPlugins.packages.${pkgs.system};
+  pluginPkgs = inputs.dmsPlugins.packages.${pkgs.stdenv.hostPlatform.system};
 in {
   programs.dankMaterialShellPlugins = {
     enable = true;

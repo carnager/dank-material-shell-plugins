@@ -3,6 +3,7 @@
 let
   cfg = config.programs.dankMaterialShellPlugins;
   helper = import ./lib.nix { inherit lib; };
+  runtimePackages = lib.concatMap (pkg: pkg.passthru.dmsRuntimePackages or [ ]) cfg.packages;
 in {
   options.programs.dankMaterialShellPlugins = {
     enable = lib.mkEnableOption "system-installed Dank Material Shell plugins";
@@ -20,5 +21,6 @@ in {
         name = "dms-plugin-bundle";
         paths = cfg.packages;
       }}/${helper.pluginInstallRoot}";
+    environment.systemPackages = runtimePackages;
   };
 }

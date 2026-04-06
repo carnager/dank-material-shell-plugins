@@ -1,4 +1,4 @@
-{ lib, callPackage }:
+{ lib, callPackage, mpdwatch }:
 
 let
   helper = import ../../nix/lib.nix { inherit lib; };
@@ -10,4 +10,7 @@ buildPlugin {
   inherit version;
   src = helper.cleanComponentSource ./.;
   installName = "mpd-browser";
+  passthru = {
+    dmsRuntimePackages = [ mpdwatch ];
+  };
 }

@@ -9,6 +9,7 @@ buildGoModule {
   inherit version;
   src = helper.cleanComponentSource ./.;
   vendorHash = null;
+  meta.mainProgram = "mpdwatch";
 
   postInstall = ''
     install -Dm644 README.md "$out/share/doc/mpdwatch/README.md"

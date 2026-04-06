@@ -11,6 +11,9 @@ buildPlugin {
   inherit version;
   src = helper.cleanComponentSource ./.;
   installName = "mpd";
+  passthru = {
+    dmsRuntimePackages = [ mpdwatch ];
+  };
   substitutions = [
     {
       path = "MpdRuntimeConfig.qml";

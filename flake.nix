@@ -10,10 +10,9 @@
         "aarch64-linux"
       ];
       forAllSystems = nixpkgs.lib.genAttrs systems;
-      nixosModule = import ./nix/module.nix;
       homeManagerModule = import ./nix/home-manager-module.nix;
     in {
-      nixosModules.default = nixosModule;
+      nixosModules.default = import ./nix/module.nix;
       homeManagerModules.default = homeManagerModule;
       homeManagerModules.dankMaterialShellPlugins = homeManagerModule;
 
@@ -22,7 +21,7 @@
           pkgs = import nixpkgs { inherit system; };
           mpdwatch = pkgs.callPackage ./tools/mpdwatch/default.nix { };
           mpd = pkgs.callPackage ./plugins/mpd/default.nix { inherit mpdwatch; };
-          mpdBrowser = pkgs.callPackage ./plugins/mpd-browser/default.nix { };
+          mpdBrowser = pkgs.callPackage ./plugins/mpd-browser/default.nix { inherit mpdwatch; };
           homeAssistantControl = pkgs.callPackage ./plugins/home-assistant-control/default.nix { };
           publicTransport = pkgs.callPackage ./plugins/public-transport/default.nix { };
           allPackages = pkgs.symlinkJoin {
@@ -34,6 +33,9 @@
               homeAssistantControl
               publicTransport
             ];
+            passthru = {
+              dmsRuntimePackages = [ mpdwatch ];
+            };
           };
         in {
           inherit mpdwatch;

@@ -6,10 +6,12 @@
   src,
   installName,
   substitutions ? [ ],
+  passthru ? { },
 }:
 
 stdenvNoCC.mkDerivation {
   inherit pname version src;
+  inherit passthru;
 
   dontConfigure = true;
   dontBuild = true;
