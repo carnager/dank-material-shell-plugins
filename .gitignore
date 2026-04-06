@@ -4,3 +4,4 @@ __pycache__/
 /.gomodcache/
 /plugins/mpd/mpdwatch
 /tools/mpdwatch/mpdwatch
+/.codex
