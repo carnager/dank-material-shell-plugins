@@ -2,6 +2,7 @@
 
 let
   cfg = config.programs.dankMaterialShellPlugins;
+  helper = import ./lib.nix { inherit lib; };
 in {
   options.programs.dankMaterialShellPlugins = {
     enable = lib.mkEnableOption "system-installed Dank Material Shell plugins";
@@ -18,6 +19,6 @@ in {
       "${pkgs.symlinkJoin {
         name = "dms-plugin-bundle";
         paths = cfg.packages;
-      }}/etc/xdg/quickshell/dms-plugins";
+      }}/${helper.pluginInstallRoot}";
   };
 }

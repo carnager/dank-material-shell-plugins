@@ -34,7 +34,26 @@ Available Nix packages:
 
 The MPD plugin package patches its default watcher path to the packaged `mpdwatch` binary on Nix, while still keeping the runtime setting as an override.
 
-The flake also exposes a small NixOS module that links packaged plugins into `/etc/xdg/quickshell/dms-plugins`, which is the system-level directory DMS already watches.
+The flake also exposes:
+
+- a NixOS module at `nixosModules.default` that links packaged plugins into `/etc/xdg/quickshell/dms-plugins`
+- a Home Manager module at `homeManagerModules.default` and `homeManagerModules.dankMaterialShellPlugins` that links packaged plugins into `~/.config/DankMaterialShell/plugins`
+
+Example Home Manager usage:
+
+```nix
+let
+  pluginPkgs = inputs.dmsPlugins.packages.${pkgs.system};
+in {
+  programs.dankMaterialShellPlugins = {
+    enable = true;
+    packages = [
+      pluginPkgs."dms-plugin-mpd"
+      pluginPkgs."dms-plugin-public-transport"
+    ];
+  };
+}
+```
 
 ## Versioning
 

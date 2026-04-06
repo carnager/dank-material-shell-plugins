@@ -10,8 +10,12 @@
         "aarch64-linux"
       ];
       forAllSystems = nixpkgs.lib.genAttrs systems;
+      nixosModule = import ./nix/module.nix;
+      homeManagerModule = import ./nix/home-manager-module.nix;
     in {
-      nixosModules.default = import ./nix/module.nix;
+      nixosModules.default = nixosModule;
+      homeManagerModules.default = homeManagerModule;
+      homeManagerModules.dankMaterialShellPlugins = homeManagerModule;
 
       packages = forAllSystems (system:
         let
