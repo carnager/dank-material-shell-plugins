@@ -30,10 +30,15 @@ PluginComponent {
     property int albumBrowserActionIndex: 0
     property var albumBrowserAlbums: []
     property var albumBrowserCache: ({})
+    property var albumBrowserCacheVersions: ({})
+    property string albumBrowserActiveCacheVersion: ""
     property bool showAlbumBrowserRandomMenu: false
     property bool pluginPopoutVisible: false
+    property bool albumBrowserViewActive: false
     property var albumBrowserFocusScope: null
     property var albumBrowserListViewRef: null
+    property bool albumBrowserRefreshQueued: false
+    property bool albumBrowserStatusPollInFlight: false
 
     MpdShared.MpdRuntimeConfig {
         id: runtimeConfig
@@ -125,8 +130,23 @@ PluginComponent {
         return text;
     }
 
+    function normalizeCacheVersion(value) {
+        if (value === undefined || value === null)
+            return "";
+        return String(value).trim();
+    }
+
     function buildAlbumBrowserCommand(mode) {
         const args = [watcherBinaryPath, "--host", host.length > 0 ? host : "localhost", "--port", port.length > 0 ? port : "6600", "--action", "dump_albums", "--arg", mode === "latest" ? "latest" : "album"];
+        if (password.length > 0)
+            args.push("--password", password);
+        if (clerkApiBaseUrl.length > 0)
+            args.push("--clerk-api-base-url", clerkApiBaseUrl);
+        return args;
+    }
+
+    function buildClerkCacheStatusCommand() {
+        const args = [watcherBinaryPath, "--host", host.length > 0 ? host : "localhost", "--port", port.length > 0 ? port : "6600", "--action", "clerk_cache_status"];
         if (password.length > 0)
             args.push("--password", password);
         if (clerkApiBaseUrl.length > 0)
@@ -307,12 +327,74 @@ PluginComponent {
         albumBrowserActionIndex = (albumBrowserActionIndex + step + count) % count;
     }
 
+    function cacheVersionForMode(mode) {
+        const normalized = mode === "latest" ? "latest" : "album";
+        return normalizeCacheVersion(albumBrowserCacheVersions[normalized]);
+    }
+
+    function setAlbumBrowserCacheVersion(mode, version) {
+        const normalized = mode === "latest" ? "latest" : "album";
+        const nextCacheVersions = {};
+        for (const key in albumBrowserCacheVersions)
+            nextCacheVersions[key] = albumBrowserCacheVersions[key];
+        nextCacheVersions[normalized] = normalizeCacheVersion(version);
+        albumBrowserCacheVersions = nextCacheVersions;
+        if (normalized === albumBrowserMode)
+            albumBrowserActiveCacheVersion = normalizeCacheVersion(version);
+    }
+
+    function queueAlbumBrowserRefresh() {
+        if (!albumBrowserViewActive)
+            return;
+
+        if (albumBrowserFetcher.running) {
+            albumBrowserRefreshQueued = true;
+            return;
+        }
+
+        albumBrowserRefreshQueued = false;
+        loadAlbumBrowser(albumBrowserMode, true);
+    }
+
+    function pollClerkCacheStatus() {
+        if (!albumBrowserViewActive || albumBrowserStatusFetcher.running || albumBrowserStatusPollInFlight)
+            return;
+
+        albumBrowserStatusPollInFlight = true;
+        albumBrowserStatusFetcher.command = buildClerkCacheStatusCommand();
+        albumBrowserStatusFetcher.running = true;
+    }
+
+    function handleClerkCacheStatusLine(line) {
+        const trimmed = String(line || "").trim();
+        if (trimmed.length === 0)
+            return;
+
+        try {
+            const payload = JSON.parse(trimmed);
+            const nextVersion = normalizeCacheVersion(payload.version);
+            if (String(payload.error || "").trim().length > 0 || nextVersion.length === 0)
+                return;
+
+            const currentVersion = albumBrowserActiveCacheVersion.length > 0 ? albumBrowserActiveCacheVersion : cacheVersionForMode(albumBrowserMode);
+            if (currentVersion.length === 0) {
+                queueAlbumBrowserRefresh();
+                return;
+            }
+
+            if (currentVersion !== nextVersion)
+                queueAlbumBrowserRefresh();
+        } catch (e) {
+        }
+    }
+
     function loadAlbumBrowser(mode, forceRefresh) {
         const normalized = mode === "latest" ? "latest" : "album";
         albumBrowserMode = normalized;
 
         if (!forceRefresh && albumBrowserCache[normalized] !== undefined) {
             albumBrowserAlbums = albumBrowserCache[normalized] || [];
+            albumBrowserActiveCacheVersion = cacheVersionForMode(normalized);
             albumBrowserError = "";
             albumBrowserLoading = false;
             syncAlbumBrowserSelection();
@@ -322,6 +404,7 @@ PluginComponent {
         albumBrowserLoading = true;
         albumBrowserError = "";
         albumBrowserPendingMode = "";
+        albumBrowserRefreshQueued = false;
         albumBrowserFetcher.command = buildAlbumBrowserCommand(normalized);
         if (albumBrowserFetcher.running) {
             albumBrowserPendingMode = normalized;
@@ -331,12 +414,38 @@ PluginComponent {
         albumBrowserFetcher.running = true;
     }
 
-    function setAlbumBrowserMode(mode, forceRefresh) {
+    function syncAlbumBrowserForActiveView(mode) {
         const normalized = mode === "latest" ? "latest" : "album";
+        const currentVersion = cacheVersionForMode(normalized);
+
+        albumBrowserMode = normalized;
         albumBrowserActionPromptId = "";
         albumBrowserActionMode = "actions";
         albumBrowserActionIndex = 0;
-        loadAlbumBrowser(normalized, !!forceRefresh);
+
+        if (albumBrowserCache[normalized] !== undefined) {
+            albumBrowserAlbums = albumBrowserCache[normalized] || [];
+            albumBrowserActiveCacheVersion = currentVersion;
+            albumBrowserError = "";
+            albumBrowserLoading = false;
+            syncAlbumBrowserSelection();
+
+            if (currentVersion.length === 0)
+                loadAlbumBrowser(normalized, true);
+            else
+                Qt.callLater(() => pollClerkCacheStatus());
+            return;
+        }
+
+        loadAlbumBrowser(normalized, true);
+    }
+
+    function setAlbumBrowserMode(mode, forceRefresh) {
+        const normalized = mode === "latest" ? "latest" : "album";
+        if (forceRefresh)
+            loadAlbumBrowser(normalized, true);
+        else
+            syncAlbumBrowserForActiveView(normalized);
         if (albumBrowserFocusScope)
             albumBrowserFocusScope.forceActiveFocus();
     }
@@ -366,9 +475,11 @@ PluginComponent {
         albumBrowserActionMode = "actions";
         albumBrowserActionIndex = 0;
         albumBrowserSearch = "";
-        loadAlbumBrowser(normalized, false);
+        albumBrowserViewActive = true;
+        syncAlbumBrowserForActiveView(normalized);
 
         if (wasVisible && sameMode) {
+            albumBrowserViewActive = false;
             closePopout();
             return;
         }
@@ -419,6 +530,8 @@ PluginComponent {
         if (albumId.length === 0 || !album)
             return;
         albumBrowserCache = ({});
+        albumBrowserCacheVersions = ({});
+        albumBrowserActiveCacheVersion = "";
         closePopout();
         runControl("set_album_rating", albumId + ":" + ratingPayloadForStar(album.rating, starIndex));
     }
@@ -564,6 +677,7 @@ PluginComponent {
                 nextCache[key] = albumBrowserCache[key];
             nextCache[mode] = albums;
             albumBrowserCache = nextCache;
+            setAlbumBrowserCacheVersion(mode, payload.cache_version);
             if (mode === albumBrowserMode)
                 albumBrowserAlbums = albums;
             albumBrowserError = String(payload.error || "");
@@ -600,12 +714,19 @@ PluginComponent {
                 return;
             }
             root.albumBrowserCache = ({});
+            root.albumBrowserCacheVersions = ({});
+            root.albumBrowserActiveCacheVersion = "";
             root.albumBrowserAlbums = [];
             root.albumBrowserSelectedId = "";
             root.albumBrowserActionPromptId = "";
             root.albumBrowserActionMode = "actions";
-            if (root.pluginPopoutVisible)
-                Qt.callLater(() => root.loadAlbumBrowser(root.albumBrowserMode, true));
+            root.albumBrowserRefreshQueued = false;
+            root.albumBrowserStatusPollInFlight = false;
+            root.albumBrowserViewActive = root.pluginPopoutVisible;
+            if (root.albumBrowserStatusFetcher.running)
+                root.albumBrowserStatusFetcher.running = false;
+            if (root.albumBrowserViewActive)
+                Qt.callLater(() => root.syncAlbumBrowserForActiveView(root.albumBrowserMode));
         }
     }
 
@@ -618,6 +739,15 @@ PluginComponent {
             if (root.albumBrowserFocusScope)
                 root.albumBrowserFocusScope.forceActiveFocus();
         }
+    }
+
+    Timer {
+        id: albumBrowserCachePollTimer
+
+        interval: 5000
+        repeat: true
+        running: root.albumBrowserViewActive
+        onTriggered: root.pollClerkCacheStatus()
     }
 
     Process {
@@ -653,6 +783,32 @@ PluginComponent {
             if (exitCode !== 0 && root.albumBrowserError.length === 0)
                 root.albumBrowserError = "Album browser request failed.";
             root.albumBrowserLoading = false;
+
+            if (root.albumBrowserRefreshQueued && root.albumBrowserViewActive) {
+                root.albumBrowserRefreshQueued = false;
+                Qt.callLater(() => root.pollClerkCacheStatus());
+            }
+        }
+    }
+
+    Process {
+        id: albumBrowserStatusFetcher
+
+        running: false
+
+        stdout: SplitParser {
+            splitMarker: "\n"
+            onRead: data => root.handleClerkCacheStatusLine(data)
+        }
+
+        stderr: SplitParser {
+            splitMarker: "\n"
+            onRead: _data => {
+            }
+        }
+
+        onExited: _exitCode => {
+            root.albumBrowserStatusPollInFlight = false;
         }
     }
 
@@ -711,15 +867,24 @@ PluginComponent {
             Connections {
                 target: popoutRoot.parentPopout
                 function onShouldBeVisibleChanged() {
+                    const wasActive = root.albumBrowserViewActive;
                     root.pluginPopoutVisible = !!(popoutRoot.parentPopout && popoutRoot.parentPopout.shouldBeVisible);
-                    if (root.pluginPopoutVisible)
+                    root.albumBrowserViewActive = root.pluginPopoutVisible;
+                    if (root.pluginPopoutVisible) {
                         root.albumBrowserFocusTimer.restart();
-                    if (!root.pluginPopoutVisible) {
+                        if (!wasActive)
+                            Qt.callLater(() => root.syncAlbumBrowserForActiveView(root.albumBrowserMode));
+                    }
+                    if (!root.albumBrowserViewActive) {
                         root.showAlbumBrowserRandomMenu = false;
                         root.albumBrowserActionPromptId = "";
                         root.albumBrowserActionMode = "actions";
                         root.albumBrowserActionIndex = 0;
                         root.albumBrowserSearch = "";
+                        root.albumBrowserRefreshQueued = false;
+                        root.albumBrowserStatusPollInFlight = false;
+                        if (root.albumBrowserStatusFetcher.running)
+                            root.albumBrowserStatusFetcher.running = false;
                     }
                 }
             }

@@ -115,10 +115,28 @@ type browserAlbumEntry struct {
 }
 
 type albumBrowserPayload struct {
-	Type   string              `json:"type"`
-	Mode   string              `json:"mode"`
-	Albums []browserAlbumEntry `json:"albums"`
-	Error  string              `json:"error"`
+	Type         string              `json:"type"`
+	Mode         string              `json:"mode"`
+	Albums       []browserAlbumEntry `json:"albums"`
+	CacheVersion string              `json:"cache_version"`
+	Error        string              `json:"error"`
+}
+
+type clerkCacheStatus struct {
+	Version   json.RawMessage `json:"version"`
+	UpdatedAt string          `json:"updated_at"`
+}
+
+type clerkCacheStatusPayload struct {
+	Type      string `json:"type"`
+	Version   string `json:"version"`
+	UpdatedAt string `json:"updated_at"`
+	Error     string `json:"error"`
+}
+
+type clerkResponse struct {
+	Body    json.RawMessage
+	Headers http.Header
 }
 
 type albumUploadRequest struct {
@@ -523,7 +541,44 @@ func clerkHTTPClientAndBaseURL(address string) (*http.Client, string, error) {
 	return &http.Client{Timeout: 5 * time.Second}, "http://" + strings.TrimRight(address, "/") + "/api/v1", nil
 }
 
-func clerkRequest(address, endpoint, method string, payload any) (json.RawMessage, error) {
+func normalizeOpaqueJSONScalar(raw json.RawMessage) string {
+	text := strings.TrimSpace(string(raw))
+	if text == "" || text == "null" {
+		return ""
+	}
+
+	if strings.HasPrefix(text, `"`) {
+		var decoded string
+		if err := json.Unmarshal(raw, &decoded); err == nil {
+			return decoded
+		}
+	}
+
+	return text
+}
+
+func extractClerkCacheVersion(headers http.Header) string {
+	if headers == nil {
+		return ""
+	}
+
+	version := strings.TrimSpace(headers.Get("X-Clerk-Cache-Version"))
+	if version != "" {
+		return version
+	}
+
+	etag := strings.TrimSpace(headers.Get("ETag"))
+	return strings.Trim(etag, `"`)
+}
+
+func extractClerkCacheUpdatedAt(headers http.Header) string {
+	if headers == nil {
+		return ""
+	}
+	return strings.TrimSpace(headers.Get("X-Clerk-Cache-Updated-At"))
+}
+
+func clerkRequestResponse(address, endpoint, method string, payload any) (*clerkResponse, error) {
 	httpClient, baseURL, err := clerkHTTPClientAndBaseURL(address)
 	if err != nil {
 		return nil, err
@@ -560,14 +615,28 @@ func clerkRequest(address, endpoint, method string, payload any) (json.RawMessag
 	if err != nil {
 		return nil, err
 	}
-	if len(raw) == 0 {
-		return nil, nil
-	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, fmt.Errorf("http status %d", resp.StatusCode)
 	}
+	if len(raw) == 0 {
+		return &clerkResponse{
+			Body:    nil,
+			Headers: resp.Header.Clone(),
+		}, nil
+	}
 
-	return raw, nil
+	return &clerkResponse{
+		Body:    raw,
+		Headers: resp.Header.Clone(),
+	}, nil
+}
+
+func clerkRequest(address, endpoint, method string, payload any) (json.RawMessage, error) {
+	response, err := clerkRequestResponse(address, endpoint, method, payload)
+	if err != nil || response == nil {
+		return nil, err
+	}
+	return response.Body, nil
 }
 
 func clerkAlbumCacheKey(albumArtist, album, date string) string {
@@ -632,9 +701,9 @@ func normalizeClerkAlbumEntry(album map[string]any) browserAlbumEntry {
 	}
 }
 
-func fetchClerkAlbumList(baseURL, mode string) ([]browserAlbumEntry, error) {
+func fetchClerkAlbumList(baseURL, mode string) ([]browserAlbumEntry, string, error) {
 	if strings.TrimSpace(baseURL) == "" {
-		return nil, errors.New("clerk API unavailable")
+		return nil, "", errors.New("clerk API unavailable")
 	}
 
 	endpoint := "albums"
@@ -642,27 +711,67 @@ func fetchClerkAlbumList(baseURL, mode string) ([]browserAlbumEntry, error) {
 		endpoint = "latest_albums"
 	}
 
-	raw, err := clerkRequest(baseURL, endpoint, http.MethodGet, nil)
+	response, err := clerkRequestResponse(baseURL, endpoint, http.MethodGet, nil)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	if raw == nil {
-		return []browserAlbumEntry{}, nil
+	cacheVersion := ""
+	if response != nil {
+		cacheVersion = extractClerkCacheVersion(response.Headers)
+	}
+	if response == nil || response.Body == nil {
+		return []browserAlbumEntry{}, cacheVersion, nil
 	}
 
-	var response []map[string]any
-	if err := json.Unmarshal(raw, &response); err != nil {
-		return []browserAlbumEntry{}, err
+	var decoded []map[string]any
+	if err := json.Unmarshal(response.Body, &decoded); err != nil {
+		return []browserAlbumEntry{}, cacheVersion, err
 	}
 
-	albums := make([]browserAlbumEntry, 0, len(response))
-	for _, item := range response {
+	albums := make([]browserAlbumEntry, 0, len(decoded))
+	for _, item := range decoded {
 		entry := normalizeClerkAlbumEntry(item)
 		if entry.ID != "" && entry.Album != "" {
 			albums = append(albums, entry)
 		}
 	}
-	return albums, nil
+	return albums, cacheVersion, nil
+}
+
+func fetchClerkCacheStatus(baseURL string) (clerkCacheStatusPayload, error) {
+	status := clerkCacheStatusPayload{
+		Type: "clerk_cache_status",
+	}
+	if strings.TrimSpace(baseURL) == "" {
+		return status, errors.New("clerk API unavailable")
+	}
+
+	response, err := clerkRequestResponse(baseURL, "cache/status", http.MethodGet, nil)
+	if err != nil {
+		return status, err
+	}
+	if response == nil {
+		return status, nil
+	}
+
+	status.Version = extractClerkCacheVersion(response.Headers)
+	status.UpdatedAt = extractClerkCacheUpdatedAt(response.Headers)
+	if response.Body == nil {
+		return status, nil
+	}
+
+	var decoded clerkCacheStatus
+	if err := json.Unmarshal(response.Body, &decoded); err != nil {
+		return status, err
+	}
+	if status.Version == "" {
+		status.Version = normalizeOpaqueJSONScalar(decoded.Version)
+	}
+	if status.UpdatedAt == "" {
+		status.UpdatedAt = strings.TrimSpace(decoded.UpdatedAt)
+	}
+
+	return status, nil
 }
 
 func stringValue(value any) string {
@@ -1386,18 +1495,26 @@ func performAction(host string, port int, password, action, arg, clerkBaseURL, u
 		if strings.ToLower(strings.TrimSpace(arg)) == "latest" {
 			mode = "latest"
 		}
-		albums, err := fetchClerkAlbumList(clerkBaseURL, mode)
+		albums, cacheVersion, err := fetchClerkAlbumList(clerkBaseURL, mode)
 		errorText := ""
 		if err != nil {
 			errorText = "Clerk API unavailable."
 			albums = []browserAlbumEntry{}
 		}
 		emit(albumBrowserPayload{
-			Type:   "album_browser",
-			Mode:   mode,
-			Albums: albums,
-			Error:  errorText,
+			Type:         "album_browser",
+			Mode:         mode,
+			Albums:       albums,
+			CacheVersion: cacheVersion,
+			Error:        errorText,
 		})
+		return nil
+	case "clerk_cache_status":
+		status, err := fetchClerkCacheStatus(clerkBaseURL)
+		if err != nil {
+			status.Error = "Clerk API unavailable."
+		}
+		emit(status)
 		return nil
 	case "queue_clerk_album":
 		if arg == "" {
