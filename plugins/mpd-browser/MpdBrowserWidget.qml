@@ -18,7 +18,12 @@ PluginComponent {
     readonly property string password: runtimeConfig.password
     readonly property string clerkApiBaseUrl: runtimeConfig.clerkApiBaseUrl
     readonly property string watcherBinaryPath: runtimeConfig.watcherBinaryPath
-    readonly property string uploadScriptPath: expandHomePath(String(pluginData.uploadScriptPath || "~/.bin/albumshare.py").trim())
+    readonly property bool albumUploadEnabled: {
+        const value = String(pluginData.uploadEnabled || "false").trim().toLowerCase();
+        return value === "true" || value === "1" || value === "yes" || value === "on";
+    }
+    readonly property string albumUploadBinaryPath: expandHomePath(String(pluginData.uploadBinaryPath || "").trim())
+    readonly property bool albumUploadAvailable: albumUploadEnabled && albumUploadBinaryPath.length > 0
     property bool albumBrowserLoading: false
     property string albumBrowserMode: defaultMode
     property string albumBrowserPendingMode: ""
@@ -167,23 +172,15 @@ PluginComponent {
 
     function runUpload(album) {
         const entry = album || null;
-        if (!entry || uploadScriptPath.length === 0)
+        if (!entry || !albumUploadAvailable)
             return;
 
         const args = [
-            watcherBinaryPath,
-            "--host", host.length > 0 ? host : "localhost",
-            "--port", port.length > 0 ? port : "6600",
-            "--action", "upload_album",
-            "--arg", JSON.stringify({
-                    "albumartist": String(entry.albumartist || ""),
-                    "album": String(entry.album || ""),
-                    "date": String(entry.date || entry.year || "")
-                }),
-            "--upload-script", uploadScriptPath
+            albumUploadBinaryPath,
+            "--artist", String(entry.albumartist || ""),
+            "--album", String(entry.album || ""),
+            "--date", String(entry.date || entry.year || "")
         ];
-        if (password.length > 0)
-            args.push("--password", password);
         Quickshell.execDetached(args);
     }
 
@@ -218,6 +215,8 @@ PluginComponent {
     }
 
     function albumBrowserActionName(index) {
+        if (index === 4 && !albumUploadAvailable)
+            return "add";
         if (index === 1)
             return "insert";
         if (index === 2)
@@ -230,7 +229,14 @@ PluginComponent {
     }
 
     function albumBrowserActionCount() {
-        return 5;
+        return albumUploadAvailable ? 5 : 4;
+    }
+
+    function albumBrowserActionLabels() {
+        const labels = ["Add", "Insert", "Replace", "Rate"];
+        if (albumUploadAvailable)
+            labels.push("Upload");
+        return labels;
     }
 
     function syncAlbumBrowserSelection() {
@@ -1111,14 +1117,14 @@ PluginComponent {
                                 spacing: Theme.spacingXS
 
                                 Repeater {
-                                    model: root.albumBrowserActionMode === "rating" ? [1, 2, 3, 4, 5] : ["Add", "Insert", "Replace", "Rate", "Upload"]
+                                    model: root.albumBrowserActionMode === "rating" ? [1, 2, 3, 4, 5] : root.albumBrowserActionLabels()
 
                                     Rectangle {
                                         required property var modelData
                                         required property int index
                                         readonly property int actionIndex: index
 
-                                        width: (parent.width - Theme.spacingXS * 4) / 5
+                                        width: (parent.width - Theme.spacingXS * ((root.albumBrowserActionMode === "rating" ? 5 : root.albumBrowserActionCount()) - 1)) / (root.albumBrowserActionMode === "rating" ? 5 : root.albumBrowserActionCount())
                                         height: 26
                                         radius: 8
                                         color: root.albumBrowserActionIndex === actionIndex ? Theme.primary : "transparent"

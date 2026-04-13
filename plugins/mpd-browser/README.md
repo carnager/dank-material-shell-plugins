@@ -12,6 +12,7 @@ This plugin splits album browsing out of the main MPD widget into its own bar pi
 - Keyboard navigation with arrow keys, `PageUp`, `PageDown`, `Home`, and `End`
 - `Tab` / `Shift+Tab` switches between `Albums` and `Latest`
 - `Add`, `Insert`, and `Replace` actions on the selected album
+- Optional external album upload action
 - Random album / random tracks menu
 - Left click opens regular album mode
 - Right click opens latest mode
@@ -22,8 +23,16 @@ The plugin id is `mpdBrowser`.
 
 - `sharedPluginId`: plugin id to read shared MPD settings from, defaults to `mpd`
 - `defaultMode`: mode used when the widget is opened through generic widget IPC, either `album` or `latest`
+- `uploadEnabled`: enable the optional upload action, defaults to `false`
+- `uploadBinaryPath`: path or command name for the upload client; only used when uploads are enabled
 
 By default, this plugin reads MPD and clerk connection settings from the main `mpd` plugin.
+
+If upload is enabled and a binary path is configured, the browser shows an `Upload` action for albums. The configured binary is called directly and must accept:
+
+```sh
+<binary> --artist "<album artist>" --album "<album name>" --date "<release date>"
+```
 
 ## Usage
 

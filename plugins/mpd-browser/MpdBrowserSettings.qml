@@ -51,4 +51,26 @@ PluginSettings {
             }]
         defaultValue: "album"
     }
+
+    SelectionSetting {
+        settingKey: "uploadEnabled"
+        label: "Album Upload"
+        description: "Enable an optional external album upload action in the browser."
+        options: [{
+                "label": "Disabled",
+                "value": "false"
+            }, {
+                "label": "Enabled",
+                "value": "true"
+            }]
+        defaultValue: "false"
+    }
+
+    StringSetting {
+        settingKey: "uploadBinaryPath"
+        label: "Upload Binary"
+        description: "Path or command name for a non-interactive album upload client. Used only when Album Upload is enabled. The binary must accept --artist, --album, and --date."
+        placeholder: "albumshare-client"
+        defaultValue: ""
+    }
 }
