@@ -1102,7 +1102,7 @@ PluginComponent {
                                 id: availableServicesList
 
                                 width: parent.width
-                                height: Math.min(132, contentHeight)
+                                height: Math.min(contentHeight, Math.max(132, pickerDrawer.height - 144))
                                 visible: root.filteredAvailableServices.length > 0
                                 model: root.filteredAvailableServices
                                 spacing: Theme.spacingXS
