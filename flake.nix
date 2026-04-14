@@ -22,25 +22,32 @@
           mpdwatch = pkgs.callPackage ./tools/mpdwatch/default.nix { };
           mpd = pkgs.callPackage ./plugins/mpd/default.nix { inherit mpdwatch; };
           mpdBrowser = pkgs.callPackage ./plugins/mpd-browser/default.nix { inherit mpdwatch; };
+          systemdUserServices = pkgs.callPackage ./plugins/systemd-user-services/default.nix {
+            systemd = pkgs.systemd;
+          };
           homeAssistantControl = pkgs.callPackage ./plugins/home-assistant-control/default.nix { };
           publicTransport = pkgs.callPackage ./plugins/public-transport/default.nix { };
+          pluginPackages = [
+            mpd
+            mpdBrowser
+            systemdUserServices
+            homeAssistantControl
+            publicTransport
+          ];
           allPackages = pkgs.symlinkJoin {
             name = "dank-material-shell-packages";
             paths = [
               mpdwatch
-              mpd
-              mpdBrowser
-              homeAssistantControl
-              publicTransport
-            ];
+            ] ++ pluginPackages;
             passthru = {
-              dmsRuntimePackages = [ mpdwatch ];
+              dmsRuntimePackages = pkgs.lib.concatMap (pkg: pkg.passthru.dmsRuntimePackages or [ ]) pluginPackages;
             };
           };
         in {
           inherit mpdwatch;
           "dms-plugin-mpd" = mpd;
           "dms-plugin-mpd-browser" = mpdBrowser;
+          "dms-plugin-systemd-user-services" = systemdUserServices;
           "dms-plugin-home-assistant-control" = homeAssistantControl;
           "dms-plugin-public-transport" = publicTransport;
           all = allPackages;

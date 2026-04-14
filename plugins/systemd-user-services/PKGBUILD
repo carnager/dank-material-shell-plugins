@@ -1,0 +1,18 @@
+pkgname=dms-plugin-systemd-user-services
+pkgver="$(<VERSION)"
+pkgrel=1
+pkgdesc="Control configured systemd user services from Dank Material Shell"
+arch=('any')
+url="https://github.com/carnager/dank-material-shell-plugins"
+license=('GPL')
+depends=('systemd')
+
+package() {
+  local dest="$pkgdir/etc/xdg/quickshell/dms-plugins/systemd-user-services"
+
+  install -d "$dest"
+  cp -a "$startdir"/. "$dest/"
+
+  rm -f "$dest/PKGBUILD" "$dest/default.nix" "$dest/VERSION"
+  find "$dest" -name '__pycache__' -type d -exec rm -rf {} +
+}

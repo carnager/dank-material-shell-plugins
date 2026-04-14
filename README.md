@@ -6,6 +6,7 @@ Monorepo for standalone Dank Material Shell / DMS plugins plus helper tools.
 
 - `plugins/mpd`: main MPD track widget
 - `plugins/mpd-browser`: dedicated MPD album browser widget
+- `plugins/systemd-user-services`: start/stop control for configured `systemd --user` services
 - `plugins/home-assistant-control`: Home Assistant widget
 - `plugins/public-transport`: public transport departures and journey lookup widget
 - `tools/mpdwatch`: standalone MPD watcher/helper binary used by the MPD plugins
@@ -28,6 +29,7 @@ Available Nix packages:
 - `mpdwatch`
 - `dms-plugin-mpd`
 - `dms-plugin-mpd-browser`
+- `dms-plugin-systemd-user-services`
 - `dms-plugin-home-assistant-control`
 - `dms-plugin-public-transport`
 - `default` / `all`

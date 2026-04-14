@@ -1,0 +1,12 @@
+{
+  "id": "systemdUserServices",
+  "name": "User Services",
+  "description": "Start or stop configured systemd user services from Dank Material Shell",
+  "version": "1.0.0",
+  "author": "carnager",
+  "icon": "tune",
+  "type": "widget",
+  "component": "./SystemdUserServicesWidget.qml",
+  "settings": "./SystemdUserServicesSettings.qml",
+  "permissions": ["settings_read", "settings_write"]
+}
