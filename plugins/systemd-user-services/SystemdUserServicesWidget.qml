@@ -52,6 +52,24 @@ PluginComponent {
         }
         return activeServiceCount + " active • " + enabledCount + " enabled";
     }
+    readonly property var orderedConfiguredServices: {
+        const ordered = configuredServices.slice();
+        ordered.sort((left, right) => {
+            const leftActive = serviceIsActive(left.unit);
+            const rightActive = serviceIsActive(right.unit);
+            if (leftActive !== rightActive)
+                return leftActive ? -1 : 1;
+
+            const leftEnabled = serviceIsEnabled(left.unit);
+            const rightEnabled = serviceIsEnabled(right.unit);
+            if (leftEnabled !== rightEnabled)
+                return leftEnabled ? -1 : 1;
+
+            return String(left.label || left.unit).localeCompare(String(right.label || right.unit));
+        });
+        return ordered;
+    }
+    readonly property int pickerDrawerClosedHeight: 52
     readonly property var filteredAvailableServices: {
         const configuredUnits = ({});
         for (const service of configuredServices)
@@ -744,8 +762,11 @@ PluginComponent {
             }
 
             Flickable {
+                id: configuredServicesView
+
                 anchors.fill: parent
                 anchors.margins: Theme.spacingM
+                anchors.bottomMargin: root.pickerDrawerClosedHeight + Theme.spacingM * 2
                 contentWidth: width
                 contentHeight: contentColumn.implicitHeight
                 clip: true
@@ -789,195 +810,8 @@ PluginComponent {
                         wrapMode: Text.WordWrap
                     }
 
-                    Rectangle {
-                        width: parent.width
-                        implicitHeight: pickerContent.implicitHeight + Theme.spacingM * 2
-                        radius: 12
-                        color: Theme.surfaceContainerHigh
-                        border.color: Theme.outline
-                        border.width: 1
-
-                        Column {
-                            id: pickerContent
-
-                            anchors.fill: parent
-                            anchors.margins: Theme.spacingM
-                            spacing: Theme.spacingS
-
-                            Row {
-                                width: parent.width
-                                spacing: Theme.spacingS
-
-                                StyledText {
-                                    width: parent.width - pickerToggleButton.width - parent.spacing
-                                    text: "Available Services"
-                                    font.pixelSize: Theme.fontSizeSmall
-                                    font.weight: Font.DemiBold
-                                    color: Theme.surfaceText
-                                    verticalAlignment: Text.AlignVCenter
-                                }
-
-                                Rectangle {
-                                    id: pickerToggleButton
-
-                                    width: 92
-                                    height: 32
-                                    radius: 10
-                                    color: pickerToggleArea.pressed ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.22) : pickerToggleArea.containsMouse ? Theme.widgetBaseHoverColor : Theme.surfaceContainer
-                                    border.color: Theme.outline
-                                    border.width: 1
-
-                                    StyledText {
-                                        anchors.centerIn: parent
-                                        text: root.servicePickerVisible ? "Close" : "Add"
-                                        font.pixelSize: Theme.fontSizeSmall
-                                        color: Theme.surfaceText
-                                    }
-
-                                    MouseArea {
-                                        id: pickerToggleArea
-                                        anchors.fill: parent
-                                        hoverEnabled: true
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: root.toggleServicePicker()
-                                    }
-                                }
-                            }
-
-                            StyledText {
-                                visible: !root.servicePickerVisible
-                                width: parent.width
-                                text: "Pick additional user services from the current systemd session."
-                                font.pixelSize: Theme.fontSizeSmall
-                                color: Theme.surfaceVariantText
-                                wrapMode: Text.WordWrap
-                            }
-
-                            Rectangle {
-                                visible: root.servicePickerVisible
-                                width: parent.width
-                                height: 36
-                                radius: 10
-                                color: Theme.surfaceContainer
-                                border.color: serviceSearchInput.activeFocus ? Theme.primary : Theme.outline
-                                border.width: 1
-
-                                Item {
-                                    anchors.fill: parent
-                                    anchors.leftMargin: Theme.spacingS
-                                    anchors.rightMargin: Theme.spacingS
-
-                                    StyledText {
-                                        anchors.fill: parent
-                                        verticalAlignment: Text.AlignVCenter
-                                        text: root.serviceSearch.length > 0 ? root.serviceSearch : "Search user services"
-                                        color: root.serviceSearch.length > 0 ? Theme.surfaceText : Theme.surfaceVariantText
-                                        font.pixelSize: Theme.fontSizeSmall
-                                        visible: !serviceSearchInput.activeFocus
-                                        elide: Text.ElideRight
-                                    }
-
-                                    TextInput {
-                                        id: serviceSearchInput
-                                        anchors.fill: parent
-                                        text: root.serviceSearch
-                                        color: activeFocus ? Theme.surfaceText : "transparent"
-                                        font.pixelSize: Theme.fontSizeSmall
-                                        verticalAlignment: TextInput.AlignVCenter
-                                        cursorVisible: activeFocus
-                                        selectionColor: Theme.primary
-                                        selectedTextColor: Theme.background
-                                        onTextChanged: root.serviceSearch = text
-                                    }
-                                }
-                            }
-
-                            StyledText {
-                                visible: root.servicePickerVisible && root.pickerError.length > 0
-                                width: parent.width
-                                text: root.pickerError
-                                font.pixelSize: Theme.fontSizeSmall
-                                color: Theme.error
-                                wrapMode: Text.WordWrap
-                            }
-
-                            StyledText {
-                                visible: root.servicePickerVisible && serviceLister.running
-                                width: parent.width
-                                text: "Loading user services..."
-                                font.pixelSize: Theme.fontSizeSmall
-                                color: Theme.surfaceVariantText
-                            }
-
-                            StyledText {
-                                visible: root.servicePickerVisible && !serviceLister.running && root.filteredAvailableServices.length === 0 && root.pickerError.length === 0
-                                width: parent.width
-                                text: "No matching services available."
-                                font.pixelSize: Theme.fontSizeSmall
-                                color: Theme.surfaceVariantText
-                            }
-
-                            Repeater {
-                                model: root.servicePickerVisible ? root.filteredAvailableServices : []
-
-                                delegate: Rectangle {
-                                    required property var modelData
-
-                                    width: parent.width
-                                    height: 44
-                                    radius: 10
-                                    color: addServiceRowArea.containsMouse ? Theme.widgetBaseHoverColor : Theme.surfaceContainer
-                                    border.color: Theme.outline
-                                    border.width: 1
-
-                                    Column {
-                                        anchors.left: parent.left
-                                        anchors.leftMargin: Theme.spacingM
-                                        anchors.right: parent.right
-                                        anchors.rightMargin: Theme.spacingM + 36
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        spacing: 2
-
-                                        StyledText {
-                                            width: parent.width
-                                            text: String(modelData.label || modelData.unit)
-                                            font.pixelSize: Theme.fontSizeSmall
-                                            color: Theme.surfaceText
-                                            elide: Text.ElideRight
-                                        }
-
-                                        StyledText {
-                                            width: parent.width
-                                            text: String(modelData.unit || "")
-                                            font.pixelSize: Theme.fontSizeSmall
-                                            color: Theme.surfaceVariantText
-                                            elide: Text.ElideRight
-                                        }
-                                    }
-
-                                    DankIcon {
-                                        anchors.right: parent.right
-                                        anchors.rightMargin: Theme.spacingM
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        name: "add"
-                                        size: 16
-                                        color: Theme.primary
-                                    }
-
-                                    MouseArea {
-                                        id: addServiceRowArea
-                                        anchors.fill: parent
-                                        hoverEnabled: true
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: root.addService(modelData)
-                                    }
-                                }
-                            }
-                        }
-                    }
-
                     StyledText {
-                        visible: root.configuredServices.length === 0
+                        visible: root.orderedConfiguredServices.length === 0
                         width: parent.width
                         text: "No services added yet."
                         font.pixelSize: Theme.fontSizeSmall
@@ -986,7 +820,7 @@ PluginComponent {
                     }
 
                     Repeater {
-                        model: root.configuredServices
+                        model: root.orderedConfiguredServices
 
                         delegate: Rectangle {
                             required property var modelData
@@ -1108,6 +942,224 @@ PluginComponent {
                                     font.pixelSize: Theme.fontSizeSmall
                                     color: root.serviceIsActive(modelData.unit) ? Theme.primary : Theme.surfaceVariantText
                                     elide: Text.ElideRight
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Rectangle {
+                id: pickerDrawer
+
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                anchors.margins: Theme.spacingM
+                height: root.servicePickerVisible ? popoutRoot.height - Theme.spacingM * 2 : root.pickerDrawerClosedHeight
+                radius: 14
+                color: Theme.surfaceContainerHigh
+                border.color: Theme.outline
+                border.width: 1
+                clip: true
+
+                Behavior on height {
+                    NumberAnimation {
+                        duration: 170
+                        easing.type: Easing.OutCubic
+                    }
+                }
+
+                Column {
+                    anchors.fill: parent
+                    anchors.margins: Theme.spacingM
+                    spacing: Theme.spacingS
+
+                    Row {
+                        width: parent.width
+                        spacing: Theme.spacingS
+
+                        StyledText {
+                            width: parent.width - pickerToggleButton.width - parent.spacing
+                            text: root.servicePickerVisible ? "Available Services" : "Add Service"
+                            font.pixelSize: Theme.fontSizeSmall
+                            font.weight: Font.DemiBold
+                            color: Theme.surfaceText
+                            verticalAlignment: Text.AlignVCenter
+                        }
+
+                        Rectangle {
+                            id: pickerToggleButton
+
+                            width: 92
+                            height: 32
+                            radius: 10
+                            color: pickerToggleArea.pressed ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.22) : pickerToggleArea.containsMouse ? Theme.widgetBaseHoverColor : Theme.surfaceContainer
+                            border.color: Theme.outline
+                            border.width: 1
+
+                            StyledText {
+                                anchors.centerIn: parent
+                                text: root.servicePickerVisible ? "Close" : "Add"
+                                font.pixelSize: Theme.fontSizeSmall
+                                color: Theme.surfaceText
+                            }
+
+                            MouseArea {
+                                id: pickerToggleArea
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: root.toggleServicePicker()
+                            }
+                        }
+                    }
+
+                    StyledText {
+                        visible: !root.servicePickerVisible
+                        width: parent.width
+                        text: "Open the drawer to pick more services from your user session."
+                        font.pixelSize: Theme.fontSizeSmall
+                        color: Theme.surfaceVariantText
+                        wrapMode: Text.WordWrap
+                    }
+
+                    Item {
+                        visible: root.servicePickerVisible
+                        width: parent.width
+                        height: pickerBody.implicitHeight
+
+                        Column {
+                            id: pickerBody
+
+                            width: parent.width
+                            spacing: Theme.spacingS
+
+                            Rectangle {
+                                width: parent.width
+                                height: 36
+                                radius: 10
+                                color: Theme.surfaceContainer
+                                border.color: serviceSearchInput.activeFocus ? Theme.primary : Theme.outline
+                                border.width: 1
+
+                                Item {
+                                    anchors.fill: parent
+                                    anchors.leftMargin: Theme.spacingS
+                                    anchors.rightMargin: Theme.spacingS
+
+                                    StyledText {
+                                        anchors.fill: parent
+                                        verticalAlignment: Text.AlignVCenter
+                                        text: root.serviceSearch.length > 0 ? root.serviceSearch : "Search user services"
+                                        color: root.serviceSearch.length > 0 ? Theme.surfaceText : Theme.surfaceVariantText
+                                        font.pixelSize: Theme.fontSizeSmall
+                                        visible: !serviceSearchInput.activeFocus
+                                        elide: Text.ElideRight
+                                    }
+
+                                    TextInput {
+                                        id: serviceSearchInput
+                                        anchors.fill: parent
+                                        text: root.serviceSearch
+                                        color: activeFocus ? Theme.surfaceText : "transparent"
+                                        font.pixelSize: Theme.fontSizeSmall
+                                        verticalAlignment: TextInput.AlignVCenter
+                                        cursorVisible: activeFocus
+                                        selectionColor: Theme.primary
+                                        selectedTextColor: Theme.background
+                                        onTextChanged: root.serviceSearch = text
+                                    }
+                                }
+                            }
+
+                            StyledText {
+                                visible: root.pickerError.length > 0
+                                width: parent.width
+                                text: root.pickerError
+                                font.pixelSize: Theme.fontSizeSmall
+                                color: Theme.error
+                                wrapMode: Text.WordWrap
+                            }
+
+                            StyledText {
+                                visible: serviceLister.running
+                                width: parent.width
+                                text: "Loading user services..."
+                                font.pixelSize: Theme.fontSizeSmall
+                                color: Theme.surfaceVariantText
+                            }
+
+                            StyledText {
+                                visible: !serviceLister.running && root.filteredAvailableServices.length === 0 && root.pickerError.length === 0
+                                width: parent.width
+                                text: "No matching services available."
+                                font.pixelSize: Theme.fontSizeSmall
+                                color: Theme.surfaceVariantText
+                            }
+
+                            ListView {
+                                id: availableServicesList
+
+                                width: parent.width
+                                height: Math.min(132, contentHeight)
+                                visible: root.filteredAvailableServices.length > 0
+                                model: root.filteredAvailableServices
+                                spacing: Theme.spacingXS
+                                clip: true
+                                boundsBehavior: Flickable.StopAtBounds
+
+                                delegate: Rectangle {
+                                    required property var modelData
+
+                                    width: ListView.view.width
+                                    height: 44
+                                    radius: 10
+                                    color: addServiceRowArea.containsMouse ? Theme.widgetBaseHoverColor : Theme.surfaceContainer
+                                    border.color: Theme.outline
+                                    border.width: 1
+
+                                    Column {
+                                        anchors.left: parent.left
+                                        anchors.leftMargin: Theme.spacingM
+                                        anchors.right: parent.right
+                                        anchors.rightMargin: Theme.spacingM + 36
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        spacing: 2
+
+                                        StyledText {
+                                            width: parent.width
+                                            text: String(modelData.label || modelData.unit)
+                                            font.pixelSize: Theme.fontSizeSmall
+                                            color: Theme.surfaceText
+                                            elide: Text.ElideRight
+                                        }
+
+                                        StyledText {
+                                            width: parent.width
+                                            text: String(modelData.unit || "")
+                                            font.pixelSize: Theme.fontSizeSmall
+                                            color: Theme.surfaceVariantText
+                                            elide: Text.ElideRight
+                                        }
+                                    }
+
+                                    DankIcon {
+                                        anchors.right: parent.right
+                                        anchors.rightMargin: Theme.spacingM
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        name: "add"
+                                        size: 16
+                                        color: Theme.primary
+                                    }
+
+                                    MouseArea {
+                                        id: addServiceRowArea
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: root.addService(modelData)
+                                    }
                                 }
                             }
                         }
