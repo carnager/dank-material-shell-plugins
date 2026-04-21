@@ -471,10 +471,9 @@ PluginComponent {
         pillClickAction = savedClickAction;
     }
 
-    function openMode(mode) {
+    function showMode(mode) {
         const normalized = mode === "latest" ? "latest" : "album";
         const wasVisible = pluginPopoutVisible;
-        const sameMode = albumBrowserMode === normalized;
 
         albumBrowserRequestedOpenMode = normalized;
         albumBrowserMode = normalized;
@@ -486,16 +485,31 @@ PluginComponent {
         albumBrowserViewActive = true;
         syncAlbumBrowserForActiveView(normalized);
 
-        if (wasVisible && sameMode) {
+        if (!wasVisible)
+            Qt.callLater(() => triggerFrameworkPopout());
+        albumBrowserFocusTimer.restart();
+    }
+
+    function toggleMode(mode) {
+        const normalized = mode === "latest" ? "latest" : "album";
+        const sameMode = albumBrowserMode === normalized;
+
+        if (pluginPopoutVisible && sameMode) {
             albumBrowserRequestedOpenMode = "";
             albumBrowserViewActive = false;
             closePopout();
             return;
         }
 
-        if (!wasVisible)
-            Qt.callLater(() => triggerFrameworkPopout());
-        albumBrowserFocusTimer.restart();
+        showMode(normalized);
+    }
+
+    function openWithMode(mode) {
+        showMode(mode);
+    }
+
+    function toggleWithMode(mode) {
+        toggleMode(mode);
     }
 
     function promptAlbumBrowserActions(albumId) {
@@ -700,10 +714,10 @@ PluginComponent {
 
     pluginId: "mpdBrowser"
     pillClickAction: function () {
-        root.openMode("album");
+        root.toggleMode("album");
     }
     pillRightClickAction: function () {
-        root.openMode("latest");
+        root.toggleMode("latest");
     }
 
     Component.onCompleted: {
