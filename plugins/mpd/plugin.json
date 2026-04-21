@@ -2,7 +2,7 @@
   "id": "mpd",
   "name": "MPD",
   "description": "Shows the current MPD track using an event-driven watcher",
-  "version": "1.0.0",
+  "version": "1.0.5",
   "author": "carnager",
   "icon": "music_note",
   "type": "widget",

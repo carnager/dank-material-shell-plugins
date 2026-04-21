@@ -2,7 +2,7 @@
   "id": "homeAssistantControl",
   "name": "Home Assistant Control",
   "description": "Controls Home Assistant lights and switches",
-  "version": "1.0.0",
+  "version": "1.0.5",
   "author": "carnager",
   "icon": "lightbulb",
   "type": "widget",

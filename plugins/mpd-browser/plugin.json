@@ -2,7 +2,7 @@
   "id": "mpdBrowser",
   "name": "MPD Browser",
   "description": "Browse and queue MPD albums in a dedicated widget",
-  "version": "1.0.0",
+  "version": "1.0.5",
   "author": "carnager",
   "icon": "library_music",
   "type": "widget",

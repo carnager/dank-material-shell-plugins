@@ -2,7 +2,7 @@
   "id": "systemdUserServices",
   "name": "User Services",
   "description": "Start or stop configured systemd user services from Dank Material Shell",
-  "version": "1.0.0",
+  "version": "1.0.5",
   "author": "carnager",
   "icon": "tune",
   "type": "widget",
