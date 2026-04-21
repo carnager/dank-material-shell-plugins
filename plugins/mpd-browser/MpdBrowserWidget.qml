@@ -26,6 +26,7 @@ PluginComponent {
     readonly property bool albumUploadAvailable: albumUploadEnabled && albumUploadBinaryPath.length > 0
     property bool albumBrowserLoading: false
     property string albumBrowserMode: defaultMode
+    property string albumBrowserRequestedOpenMode: ""
     property string albumBrowserPendingMode: ""
     property string albumBrowserSearch: ""
     property string albumBrowserError: ""
@@ -475,6 +476,7 @@ PluginComponent {
         const wasVisible = pluginPopoutVisible;
         const sameMode = albumBrowserMode === normalized;
 
+        albumBrowserRequestedOpenMode = normalized;
         albumBrowserMode = normalized;
         showAlbumBrowserRandomMenu = false;
         albumBrowserActionPromptId = "";
@@ -485,6 +487,7 @@ PluginComponent {
         syncAlbumBrowserForActiveView(normalized);
 
         if (wasVisible && sameMode) {
+            albumBrowserRequestedOpenMode = "";
             albumBrowserViewActive = false;
             closePopout();
             return;
@@ -878,10 +881,14 @@ PluginComponent {
                     root.albumBrowserViewActive = root.pluginPopoutVisible;
                     if (root.pluginPopoutVisible) {
                         root.albumBrowserFocusTimer.restart();
-                        if (!wasActive)
-                            Qt.callLater(() => root.syncAlbumBrowserForActiveView(root.albumBrowserMode));
+                        if (!wasActive) {
+                            const requestedMode = root.albumBrowserRequestedOpenMode.length > 0 ? root.albumBrowserRequestedOpenMode : root.defaultMode;
+                            root.albumBrowserRequestedOpenMode = "";
+                            Qt.callLater(() => root.syncAlbumBrowserForActiveView(requestedMode));
+                        }
                     }
                     if (!root.albumBrowserViewActive) {
+                        root.albumBrowserRequestedOpenMode = "";
                         root.showAlbumBrowserRandomMenu = false;
                         root.albumBrowserActionPromptId = "";
                         root.albumBrowserActionMode = "actions";
